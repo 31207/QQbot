@@ -1,0 +1,15 @@
+[project]
+name = "qq-bot"
+version = "0.1.0"
+description = "Third-party QQ bot (NapCat + NoneBot2) with song-request feature"
+requires-python = ">=3.9"
+dependencies = [
+    "nonebot2[fastapi]>=2.0.0",
+    "nonebot-adapter-onebot>=2.4.0",
+]
+
+[tool.nonebot]
+plugin_dirs = ["plugins"]
+adapters = [
+    { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
+]

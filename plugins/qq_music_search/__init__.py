@@ -86,6 +86,31 @@ def fetch_cached_cover(cover_url: str, name: str = "", artist: str = ""):
     return fetch_cover(API.base, cover_url, COVER_DIR, name, artist)
 
 
+async def do_search(sender_id: str, keyword: str, source: str | None = None):
+    """供其他插件直接触发搜索：返回图片 MessageSegment 或提示字符串。"""
+    keyword = (keyword or "").strip()
+    if not keyword:
+        return "用法：直接发送歌名（如 晴天）即可搜索；或「搜索 歌名」指定搜索。"
+    try:
+        songs = await API.search_songs(keyword, [source] if source else None)
+    except MusicSearchError as exc:
+        return f"搜索失败：{exc}"
+    if not songs:
+        return "没有找到相关歌曲，换个关键词试试"
+    _sessions[sender_id] = {
+        "query": keyword,
+        "source": source,
+        "songs": songs,
+        "page": 1,
+        "total_pages": math.ceil(len(songs) / PAGE_SIZE),
+        "ts": time.time(),
+    }
+    img = await _render_session(_sessions[sender_id])
+    if img is None:
+        return "图片生成失败，请稍后重试"
+    return MessageSegment.image(img)
+
+
 def parse_search_command(text: str) -> tuple[str | None, str] | None:
     """「搜索 [平台] 关键词」→ (平台, 关键词)；非搜索指令返回 None。"""
     t = (text or "").lstrip("/").strip()

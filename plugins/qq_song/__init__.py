@@ -17,6 +17,7 @@ from nonebot.adapters.onebot.v11 import Bot, MessageEvent, MessageSegment
 from nonebot.rule import Rule, to_me
 
 from .song_core import (
+    HELP_DETAILS,
     HELP_MENU,
     format_records,
     format_remaining,
@@ -68,6 +69,10 @@ async def _is_private(event: MessageEvent) -> bool:
 
 matcher = on_message(priority=5, block=True, rule=to_me() & Rule(_is_private))
 
+# 用户临时状态：正在从帮助菜单选编号 / 已开启的功能模式("song" / "search")
+_help_user: set[str] = set()
+_pending_mode: dict[str, str] = {}
+
 
 @matcher.handle()
 async def _(bot: Bot, event: MessageEvent):
@@ -104,8 +109,65 @@ async def _(bot: Bot, event: MessageEvent):
     if STORE.is_user_banned(uid):
         await matcher.finish("你已被封禁，无法使用点歌功能")
 
+    # 帮助选择：上一条是「帮助」，这一条当作编号处理
+    if uid in _help_user:
+        _help_user.discard(uid)
+        key = text.strip().lstrip("/")
+
+        # 3 / 4：不发说明，直接执行
+        if key == "3":  # 我的歌单
+            records = STORE.list_for_user(uid, RECORD_LIMIT)
+            if not records:
+                await matcher.finish(
+                    "你还没有点歌记录。先「搜索 歌名」搜索，再「点歌 序号」即可点歌。"
+                )
+            img = await _render_records(records)
+            if img is not None:
+                await matcher.finish(MessageSegment.image(img))
+            await matcher.finish(format_records(records))
+        if key == "4":  # 剩余次数
+            await matcher.finish(
+                format_remaining(STORE.count_for_user_today(uid), DAILY_LIMIT)
+            )
+
+        detail = HELP_DETAILS.get(key)
+        if detail is not None:
+            if key == "1":  # 点歌：开启裸数字点歌模式
+                _pending_mode[uid] = "song"
+                await matcher.finish(
+                    detail
+                    + "\n\n已开启点歌模式：直接回复数字序号即可点歌；也可继续用「点歌 序号」。"
+                )
+            if key == "2":  # 搜索：开启裸文字搜索模式
+                _pending_mode[uid] = "search"
+                await matcher.finish(
+                    detail
+                    + "\n\n已开启搜索模式：直接发送歌名即可搜索；也可继续用「搜索 歌名」。"
+                )
+            await matcher.finish(detail + "\n\n该功能已开启，按上方说明使用。")
+
+    # 已开启功能模式：处理下一条消息（一次性）
+    if uid in _pending_mode:
+        mode = _pending_mode.pop(uid)
+        if mode == "song" and text.strip().isdigit():
+            await _request_song(uid, int(text.strip()))
+        elif mode == "search":
+            kw = text.strip()
+            cmds = (
+                "帮助", "菜单", "我的歌单", "歌单", "点歌记录",
+                "剩余次数", "查询剩余点歌次数", "剩余点歌次数",
+                "上一页", "下一页", "退出搜索",
+            )
+            is_cmd = (kw in cmds) or kw.startswith(
+                ("搜索", "点歌", "备注", "封禁", "解封", "帮助")
+            )
+            module = _find_search_plugin()
+            if (not is_cmd) and kw and module is not None and hasattr(module, "do_search"):
+                await matcher.finish(await module.do_search(uid, kw))
+
     # 帮助
     if match_command(text, "帮助", "菜单"):
+        _help_user.add(uid)
         await matcher.finish(HELP_MENU)
 
     # 备注

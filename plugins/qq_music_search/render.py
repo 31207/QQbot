@@ -53,10 +53,18 @@ _REGULAR_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-DemiLight.ttc",
     "/usr/share/fonts/truetype/arphic/uming.ttc",
     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    # Windows built-in CJK fonts
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/simhei.ttf",
+    "C:/Windows/Fonts/simsun.ttc",
+    "C:/Windows/Fonts/Deng.ttf",
 )
 _BOLD_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+    # Windows built-in CJK bold fonts
+    "C:/Windows/Fonts/msyhbd.ttc",
+    "C:/Windows/Fonts/simhei.ttf",
 )
 
 _REGULAR_FILE = next((p for p in _REGULAR_CANDIDATES if os.path.exists(p)), None)

@@ -8,3 +8,10 @@ data/
 *.log
 napcat/
 *.zip
+
+# go-music-api (外部部署的原生 Go 服务, 非本仓库代码)
+go-music-api/
+
+# 本地 Go 工具链/构建缓存
+go-toolchain/
+gopath/

@@ -74,7 +74,7 @@ qq-bot/
 | `DRIVER` | NoneBot 驱动器（fastapi 反代 WS + websockets 正向 WS 客户端） | `~fastapi+~websockets` |
 | `HOST` / `PORT` | 监听地址/端口（NapCat 反向 WS 指向它） | `127.0.0.1` / `8080` |
 | `ONEBOT_WS_URLS` | 正向 WebSocket 地址（NapCat 作为 WS 服务端时） | 空 |
-| `QQ_MUSIC_API_BASE` | Go Music API 地址 | `http://127.0.0.1:8080` |
+| `QQ_MUSIC_API_BASE` | Go Music API 地址 | `http://127.0.0.1:8081` |
 | `QQ_MUSIC_COVER_DIR` | 封面缓存目录 | `data/covers` |
 | `QQ_MUSIC_PAGE_SIZE` | 搜索每页条数 | `10` |
 | `QQ_MUSIC_SESSION_TTL` | 搜索会话有效期（秒） | `600` |

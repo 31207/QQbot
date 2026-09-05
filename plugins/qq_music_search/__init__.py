@@ -34,7 +34,7 @@ def _env(name: str, default: str = "") -> str:
     return str(value).strip()
 
 
-API = MusicAPI(_env("QQ_MUSIC_API_BASE", "http://127.0.0.1:8080"))
+API = MusicAPI(_env("QQ_MUSIC_API_BASE", "http://127.0.0.1:8081"))
 PAGE_SIZE = int(_env("QQ_MUSIC_PAGE_SIZE", "10") or "10")
 COVER_DIR = Path(
     _env("QQ_MUSIC_COVER_DIR") or str(_PROJECT_ROOT / "data" / "covers")

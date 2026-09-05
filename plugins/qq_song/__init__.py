@@ -12,8 +12,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from nonebot import get_driver, get_loaded_plugins, on_message
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent, MessageSegment
+from nonebot import get_driver, get_loaded_plugins, logger, on_message, on_notice
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    FriendAddNoticeEvent,
+    MessageEvent,
+    MessageSegment,
+)
 from nonebot.rule import Rule, to_me
 
 from .song_core import (
@@ -72,6 +77,24 @@ matcher = on_message(priority=5, block=True, rule=to_me() & Rule(_is_private))
 # 用户临时状态：正在从帮助菜单选编号 / 已开启的功能模式("song" / "search")
 _help_user: set[str] = set()
 _pending_mode: dict[str, str] = {}
+
+
+def _is_friend_add(event) -> bool:
+    return isinstance(event, FriendAddNoticeEvent)
+
+
+friend_add_matcher = on_notice(priority=1, block=True, rule=Rule(_is_friend_add))
+
+
+@friend_add_matcher.handle()
+async def _(bot: Bot, event: FriendAddNoticeEvent):
+    """新好友添加后，主动发送帮助菜单。"""
+    try:
+        await bot.call_api(
+            "send_private_msg", user_id=event.user_id, message=HELP_MENU
+        )
+    except Exception:
+        logger.exception("发送新好友帮助菜单失败")
 
 
 @matcher.handle()

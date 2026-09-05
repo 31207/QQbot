@@ -28,7 +28,6 @@
 qq-bot/
 ├── bot.py                    # NoneBot2 入口
 ├── pyproject.toml            # 依赖与插件配置
-├── start.bat                 # 一键启动（NapCat + 机器人）
 ├── .env / .env.prod          # 驱动/端口/插件配置
 ├── plugins/
 │   ├── qq_music_search/      # 音乐搜索插件（api/covers/render）
@@ -66,7 +65,7 @@ qq-bot/
 2. 安装 Python（3.9+），建虚拟环境并按上方命令安装依赖。
 3. 配置环境：`Copy-Item .env.example .env`，设置 `QQ_MUSIC_API_BASE` 等配置项。
 4. 部署 Go Music API 与 NapCat（均需单独准备），NapCat 配置反向 WebSocket。
-5. 启动：`.\.venv\Scripts\python.exe bot.py`；或 `start.bat`。
+5. 启动：`.\.venv\Scripts\python.exe bot.py`。
 
 ## 配置项
 | 变量 | 说明 | 默认 |

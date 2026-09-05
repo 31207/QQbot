@@ -15,3 +15,6 @@ go-music-api/
 # 本地 Go 工具链/构建缓存
 go-toolchain/
 gopath/
+
+# 本地一键启动脚本（仅本机使用，不入库）
+start-all.bat

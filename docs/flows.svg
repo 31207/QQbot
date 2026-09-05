@@ -1,0 +1,220 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1024" viewBox="0 0 1240 1024">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f87171"/>
+    </marker>
+  </defs>
+
+  <rect width="1240" height="1024" fill="#ffffff"/>
+  <text x="620" y="44" text-anchor="middle" font-size="26" font-weight="700" fill="#111827" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">指令与流程</text>
+
+  <!-- ============ 指令列表 ============ -->
+  <text x="36" y="84" font-size="17" font-weight="700" fill="#374151" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">指令列表（仅私聊）</text>
+
+  <g>
+    <rect x="36" y="96" width="560" height="118" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <path d="M36 106 a10 10 0 0 1 10 -10 h540 a10 10 0 0 1 10 10 v26 h-560 z" fill="#3b82f6"/>
+    <text x="52" y="125" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">音乐搜索插件（qq_music_search）</text>
+    <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+      <text x="52" y="152" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">搜索 [平台] 歌名</text><text x="236" y="152" fill="#6b7280">全平台 / 指定平台搜索 → 结果图片（每页 10 条）</text>
+      <text x="52" y="180" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">上一页 / 下一页</text><text x="236" y="180" fill="#6b7280">翻页查看搜索结果</text>
+      <text x="52" y="208" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">退出搜索</text><text x="236" y="208" fill="#6b7280">结束搜索会话（10 分钟自动过期）</text>
+    </g>
+  </g>
+
+  <g>
+    <rect x="624" y="96" width="580" height="174" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <path d="M624 106 a10 10 0 0 1 10 -10 h560 a10 10 0 0 1 10 10 v26 h-580 z" fill="#10b981"/>
+    <text x="640" y="125" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">点歌插件（qq_song）</text>
+    <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+      <text x="640" y="152" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">点歌 序号</text><text x="864" y="152" fill="#6b7280">点选最近搜索结果第 N 首</text>
+      <text x="640" y="180" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">我的歌单 / 歌单</text><text x="864" y="180" fill="#6b7280">点歌记录图片（封面 · 编号 · 备注）</text>
+      <text x="640" y="208" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">备注 编号 [内容]</text><text x="864" y="208" fill="#6b7280">设置备注；只给编号则清除备注</text>
+      <text x="640" y="236" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">查询剩余点歌次数</text><text x="864" y="236" fill="#6b7280">今日已点 x/5</text>
+      <text x="640" y="264" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">帮助 / 菜单</text><text x="864" y="264" fill="#6b7280">指令说明</text>
+    </g>
+  </g>
+
+  <!-- 管理命令卡片 -->
+  <g>
+    <rect x="36" y="218" width="560" height="74" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <path d="M36 228 a10 10 0 0 1 10 -10 h540 a10 10 0 0 1 10 10 v20 h-560 z" fill="#8b5cf6"/>
+    <text x="52" y="243" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">管理命令（仅超级管理员 · SUPERUSERS）</text>
+    <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+      <text x="52" y="259" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">封禁 用户ID / 解封 用户ID</text><text x="236" y="259" fill="#6b7280">封禁 / 解封用户（支持预封禁）</text>
+      <text x="52" y="281" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">封禁列表</text><text x="236" y="281" fill="#6b7280">查看被封禁用户</text>
+    </g>
+  </g>
+
+  <!-- ============ 核心流程 ============ -->
+  <text x="36" y="316" font-size="17" font-weight="700" fill="#374151" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">核心流程</text>
+  <g>
+    <rect x="150" y="302" width="16" height="16" rx="4" fill="#eff6ff" stroke="#93c5fd"/><text x="172" y="315" font-size="12" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">开始</text>
+    <rect x="202" y="302" width="16" height="16" rx="4" fill="#f0fdf4" stroke="#86efac"/><text x="224" y="315" font-size="12" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">结束</text>
+    <rect x="254" y="302" width="16" height="16" rx="4" fill="#fffbeb" stroke="#fcd34d"/><text x="276" y="315" font-size="12" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">判断</text>
+    <rect x="306" y="302" width="16" height="16" rx="4" fill="#fef2f2" stroke="#fca5a5"/><text x="328" y="315" font-size="12" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">错误 / 终止</text>
+  </g>
+
+  <!-- ===== 点歌流程 ===== -->
+  <text x="36" y="342" font-size="15" font-weight="700" fill="#111827" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">点歌流程</text>
+
+  <g font-size="13.5" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" text-anchor="middle">
+    <rect x="36" y="356" width="380" height="46" rx="8" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="226" y="373" fill="#1e3a8a" font-weight="700">「点歌 N」</text><text x="226" y="393" fill="#1e40af">取最近搜索结果第 N 首</text>
+
+    <rect x="36" y="414" width="380" height="46" rx="8" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="226" y="442" fill="#78350f" font-weight="700">有搜索会话？</text>
+
+    <rect x="36" y="472" width="380" height="46" rx="8" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="226" y="500" fill="#78350f" font-weight="700">1 ≤ N ≤ 结果数？</text>
+
+    <rect x="36" y="530" width="380" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="226" y="547" fill="#111827">查歌曲库 (source, id)</text><text x="226" y="567" fill="#6b7280">不存在 → 入库（is_banned=0 · play_count=0）</text>
+
+    <rect x="36" y="588" width="380" height="46" rx="8" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="226" y="616" fill="#78350f" font-weight="700">已 ban？</text>
+
+    <rect x="36" y="646" width="380" height="46" rx="8" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="226" y="674" fill="#78350f" font-weight="700">今日已点 ≥ 上限？</text>
+
+    <rect x="36" y="704" width="380" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="226" y="732" fill="#111827">用户不存在 → 创建用户</text>
+
+    <rect x="36" y="762" width="380" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="226" y="779" fill="#111827">首次点歌？</text><text x="226" y="799" fill="#6b7280">是 → 新增记录；否 → 置顶 · 当日次数 +1</text>
+
+    <rect x="36" y="820" width="380" height="46" rx="8" fill="#f0fdf4" stroke="#86efac"/>
+    <text x="226" y="837" fill="#14532d" font-weight="700">回复：点歌成功 / 已置顶</text><text x="226" y="857" fill="#166534">今日已点 x/5</text>
+  </g>
+
+  <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" text-anchor="middle">
+    <rect x="440" y="414" width="210" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="545" y="442" fill="#b91c1c">请先「搜索 歌名」</text>
+    <rect x="440" y="472" width="210" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="545" y="500" fill="#b91c1c">序号超出范围</text>
+    <rect x="440" y="588" width="210" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="545" y="616" fill="#b91c1c">《歌》已被屏蔽</text>
+    <rect x="440" y="646" width="210" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="545" y="674" fill="#b91c1c">今日次数已用完</text>
+  </g>
+
+  <g stroke="#94a3b8" stroke-width="1.5" fill="none">
+    <path d="M226 402 V 412" marker-end="url(#arrow)"/>
+    <path d="M226 460 V 470" marker-end="url(#arrow)"/>
+    <path d="M226 518 V 528" marker-end="url(#arrow)"/>
+    <path d="M226 576 V 586" marker-end="url(#arrow)"/>
+    <path d="M226 634 V 644" marker-end="url(#arrow)"/>
+    <path d="M226 692 V 702" marker-end="url(#arrow)"/>
+    <path d="M226 750 V 760" marker-end="url(#arrow)"/>
+    <path d="M226 808 V 818" marker-end="url(#arrow)"/>
+  </g>
+  <g stroke="#f87171" stroke-width="1.5" fill="none">
+    <path d="M418 437 H 438" marker-end="url(#arrow-err)"/>
+    <path d="M418 495 H 438" marker-end="url(#arrow-err)"/>
+    <path d="M418 611 H 438" marker-end="url(#arrow-err)"/>
+    <path d="M418 669 H 438" marker-end="url(#arrow-err)"/>
+  </g>
+  <g font-size="12" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+    <text x="244" y="436" fill="#15803d">是</text>
+    <text x="429" y="432" fill="#b91c1c">否</text>
+    <text x="244" y="494" fill="#15803d">是</text>
+    <text x="429" y="490" fill="#b91c1c">否</text>
+    <text x="244" y="610" fill="#15803d">否</text>
+    <text x="429" y="606" fill="#b91c1c">是</text>
+    <text x="244" y="668" fill="#15803d">否</text>
+    <text x="429" y="664" fill="#b91c1c">是</text>
+  </g>
+
+  <!-- ===== 备注流程 ===== -->
+  <text x="700" y="342" font-size="15" font-weight="700" fill="#111827" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">备注流程</text>
+
+  <g font-size="13.5" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" text-anchor="middle">
+    <rect x="700" y="356" width="300" height="46" rx="8" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="850" y="384" fill="#1e3a8a" font-weight="700">「备注 编号 [内容]」</text>
+
+    <rect x="700" y="414" width="300" height="46" rx="8" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="850" y="442" fill="#78350f" font-weight="700">给出编号？</text>
+
+    <rect x="700" y="472" width="300" height="46" rx="8" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="850" y="500" fill="#78350f" font-weight="700">点歌记录中有该歌？</text>
+
+    <rect x="700" y="530" width="300" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="850" y="547" fill="#111827">有内容 → 设置备注</text><text x="850" y="567" fill="#6b7280">无内容 → 清除备注</text>
+
+    <rect x="700" y="588" width="300" height="46" rx="8" fill="#f0fdf4" stroke="#86efac"/>
+    <text x="850" y="616" fill="#14532d" font-weight="700">回复确认（歌单图片同步更新）</text>
+  </g>
+
+  <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" text-anchor="middle">
+    <rect x="1015" y="414" width="200" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="1115" y="442" fill="#b91c1c">用法提示</text>
+    <rect x="1015" y="472" width="200" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="1115" y="492" fill="#b91c1c">没有点过</text><text x="1115" y="509" fill="#b91c1c">编号 X 的歌</text>
+  </g>
+
+  <g stroke="#94a3b8" stroke-width="1.5" fill="none">
+    <path d="M850 402 V 412" marker-end="url(#arrow)"/>
+    <path d="M850 460 V 470" marker-end="url(#arrow)"/>
+    <path d="M850 518 V 528" marker-end="url(#arrow)"/>
+    <path d="M850 576 V 586" marker-end="url(#arrow)"/>
+  </g>
+  <g stroke="#f87171" stroke-width="1.5" fill="none">
+    <path d="M1002 437 H 1013" marker-end="url(#arrow-err)"/>
+    <path d="M1002 495 H 1013" marker-end="url(#arrow-err)"/>
+  </g>
+  <g font-size="12" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+    <text x="868" y="436" fill="#15803d">是</text>
+    <text x="1006" y="432" fill="#b91c1c">否</text>
+    <text x="868" y="494" fill="#15803d">是</text>
+    <text x="1006" y="490" fill="#b91c1c">否</text>
+  </g>
+
+  <!-- ===== 歌单流程 ===== -->
+  <text x="700" y="652" font-size="15" font-weight="700" fill="#111827" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">歌单 / 点歌记录流程</text>
+
+  <g font-size="13.5" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" text-anchor="middle">
+    <rect x="700" y="666" width="504" height="46" rx="8" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="952" y="694" fill="#1e3a8a" font-weight="700">「我的歌单 / 歌单 / 点歌记录」</text>
+
+    <rect x="700" y="724" width="504" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="952" y="752" fill="#111827">查询 user_requests ⋈ songs（最近 20 条，置顶优先）</text>
+
+    <rect x="700" y="782" width="300" height="46" rx="8" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="850" y="810" fill="#78350f" font-weight="700">有记录？</text>
+
+    <rect x="700" y="840" width="504" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="952" y="868" fill="#111827">拉取封面（缓存命中；未命中 → 经 /api/v1/music/cover 代理下载落盘）</text>
+
+    <rect x="700" y="898" width="504" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="952" y="926" fill="#111827">PIL 渲染 PNG（封面 · 歌手 · 来源 · 时间 · 编号 · 备注）</text>
+
+    <rect x="700" y="956" width="504" height="46" rx="8" fill="#f0fdf4" stroke="#86efac"/>
+    <text x="952" y="984" fill="#14532d" font-weight="700">发送图片（渲染失败 → 退回文字版）</text>
+  </g>
+
+  <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" text-anchor="middle">
+    <rect x="1015" y="782" width="200" height="46" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="1115" y="802" fill="#b91c1c">文字提示</text><text x="1115" y="819" fill="#b91c1c">还没有点歌记录</text>
+  </g>
+
+  <g stroke="#94a3b8" stroke-width="1.5" fill="none">
+    <path d="M952 712 V 722" marker-end="url(#arrow)"/>
+    <path d="M850 770 V 781" marker-end="url(#arrow)"/>
+    <path d="M850 828 V 838" marker-end="url(#arrow)"/>
+    <path d="M952 886 V 896" marker-end="url(#arrow)"/>
+    <path d="M952 944 V 954" marker-end="url(#arrow)"/>
+  </g>
+  <g stroke="#f87171" stroke-width="1.5" fill="none">
+    <path d="M1002 805 H 1013" marker-end="url(#arrow-err)"/>
+  </g>
+  <g font-size="12" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+    <text x="868" y="804" fill="#15803d">是</text>
+    <text x="1006" y="800" fill="#b91c1c">否</text>
+  </g>
+
+  <text x="36" y="985" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">点歌次数按日统计（day / day_count），每日上限 QQ_SONG_DAILY_LIMIT（默认 5）；重复点歌置顶且当日次数照扣</text>
+  <text x="36" y="1007" font-size="13" fill="#b91c1c" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">被封禁用户：点歌插件全部功能拒绝（管理命令除外）</text>
+</svg>

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="775" viewBox="0 0 1240 775">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect width="1240" height="775" fill="#ffffff"/>
+  <text x="620" y="44" text-anchor="middle" font-size="26" font-weight="700" fill="#111827" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">项目结构与数据库设计</text>
+
+  <!-- ============ 左：项目结构 ============ -->
+  <text x="36" y="88" font-size="17" font-weight="700" fill="#374151" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">项目结构</text>
+  <text x="36" y="120" font-size="14" fill="#374151" font-family="ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace">
+    <tspan x="36" dy="0">QQbot/</tspan>
+    <tspan x="36" dy="24">├─ bot.py                  NoneBot2 入口</tspan>
+    <tspan x="36" dy="24">├─ pyproject.toml          依赖与插件配置</tspan>
+    <tspan x="36" dy="24">├─ start.bat               一键启动（NapCat + 机器人）</tspan>
+    <tspan x="36" dy="24">├─ .env / .env.prod        驱动器 / 端口 / 插件配置</tspan>
+    <tspan x="36" dy="24">├─ plugins/</tspan>
+    <tspan x="36" dy="24">│  ├─ qq_music_search/     音乐搜索插件</tspan>
+    <tspan x="36" dy="24">│  │  ├─ __init__.py       搜索命令 · 会话 · 渲染编排</tspan>
+    <tspan x="36" dy="24">│  │  ├─ api.py            Go Music API 客户端</tspan>
+    <tspan x="36" dy="24">│  │  ├─ covers.py         封面代理下载 + 磁盘缓存</tspan>
+    <tspan x="36" dy="24">│  │  └─ render.py         结果图 / 歌单图渲染（PIL）</tspan>
+    <tspan x="36" dy="24">│  └─ qq_song/             点歌插件</tspan>
+    <tspan x="36" dy="24">│     ├─ __init__.py       点歌 · 歌单 · 备注命令</tspan>
+    <tspan x="36" dy="24">│     ├─ song_core.py      指令解析与格式化</tspan>
+    <tspan x="36" dy="24">│     └─ storage.py        SQLite 存储（歌曲/用户/记录）</tspan>
+    <tspan x="36" dy="24">└─ data/</tspan>
+    <tspan x="36" dy="24">   ├─ song_requests.db     SQLite 数据库</tspan>
+    <tspan x="36" dy="24">   └─ covers/              封面缓存（按 URL 的 md5 命名）</tspan>
+  </text>
+  <text x="36" y="580" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">音乐搜索 API：Go Music API（独立服务）</text>
+  <text x="36" y="602" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">地址由 QQ_MUSIC_API_BASE 指定；封面经 /api/v1/music/cover 代理获取</text>
+
+  <!-- ============ 右：数据库 ============ -->
+  <text x="560" y="88" font-size="17" font-weight="700" fill="#374151" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">数据库（SQLite · data/song_requests.db）</text>
+
+  <!-- songs 表 -->
+  <g>
+    <rect x="560" y="100" width="640" height="372" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <path d="M560 110 a10 10 0 0 1 10 -10 h620 a10 10 0 0 1 10 10 v26 h-640 z" fill="#3b82f6"/>
+    <text x="574" y="129" font-size="15" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">songs · 歌曲库</text>
+    <text x="1026" y="129" font-size="12" fill="#bfdbfe" font-family="ui-monospace,Consolas,monospace">UNIQUE(source, source_id)</text>
+    <g font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="13">
+      <text x="574" y="163" font-weight="700" fill="#b45309">id</text><text x="640" y="163" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INTEGER</text><text x="760" y="163" fill="#6b7280">PK · 自增</text>
+      <text x="574" y="187" font-weight="700" fill="#111827">source</text><text x="640" y="187" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="187" fill="#6b7280">来源平台（netease / qq / kugou …）</text>
+      <text x="574" y="211" font-weight="700" fill="#111827">source_id</text><text x="640" y="211" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="211" fill="#6b7280">平台歌曲 ID</text>
+      <text x="574" y="235" font-weight="700" fill="#111827">name</text><text x="640" y="235" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="235" fill="#6b7280">歌名</text>
+      <text x="574" y="259" font-weight="700" fill="#111827">artist</text><text x="640" y="259" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="259" fill="#6b7280">歌手</text>
+      <text x="574" y="283" font-weight="700" fill="#111827">album</text><text x="640" y="283" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="283" fill="#6b7280">专辑</text>
+      <text x="574" y="307" font-weight="700" fill="#111827">cover</text><text x="640" y="307" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="307" fill="#6b7280">封面 URL</text>
+      <text x="574" y="331" font-weight="700" fill="#111827">duration</text><text x="640" y="331" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INTEGER</text><text x="760" y="331" fill="#6b7280">时长（秒）</text>
+      <text x="574" y="355" font-weight="700" fill="#111827">url</text><text x="640" y="355" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="355" fill="#6b7280">音频直链</text>
+      <text x="574" y="379" font-weight="700" fill="#111827">link</text><text x="640" y="379" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="379" fill="#6b7280">网页链接</text>
+      <text x="574" y="403" font-weight="700" fill="#111827">is_banned</text><text x="640" y="403" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INTEGER</text><text x="760" y="403" fill="#6b7280">是否被 ban（0 否 / 1 是，默认 0）</text>
+      <text x="574" y="427" font-weight="700" fill="#111827">play_count</text><text x="640" y="427" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INTEGER</text><text x="760" y="427" fill="#6b7280">播放次数（预留，点歌不累计）</text>
+      <text x="574" y="451" font-weight="700" fill="#111827">created_at</text><text x="640" y="451" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="760" y="451" fill="#6b7280">入库时间</text>
+    </g>
+  </g>
+
+  <!-- users 表 -->
+  <g>
+    <rect x="560" y="512" width="300" height="108" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <path d="M560 522 a10 10 0 0 1 10 -10 h280 a10 10 0 0 1 10 10 v26 h-300 z" fill="#10b981"/>
+    <text x="574" y="541" font-size="15" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">users · 用户</text>
+    <text x="574" y="560" font-weight="700" fill="#b45309" font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">user_id</text><text x="650" y="560" font-size="13" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="700" y="560" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">PK</text>
+    <text x="574" y="584" font-size="13" fill="#111827" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">created_at</text><text x="650" y="584" font-size="13" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="700" y="584" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">创建时间</text>
+    <text x="574" y="608" font-size="13" fill="#111827" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">is_banned</text><text x="650" y="608" font-size="13" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INTEGER</text><text x="740" y="608" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">是否封禁（默认 0）</text>
+  </g>
+
+  <!-- user_requests 表 -->
+  <g>
+    <rect x="920" y="512" width="300" height="228" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <path d="M920 522 a10 10 0 0 1 10 -10 h280 a10 10 0 0 1 10 10 v26 h-300 z" fill="#8b5cf6"/>
+    <text x="934" y="541" font-size="15" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">user_requests · 点歌记录</text>
+    <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+      <text x="934" y="560" font-weight="700" fill="#b45309">id</text><text x="1012" y="560" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INT</text><text x="1052" y="560" fill="#6b7280">PK · 自增</text>
+      <text x="934" y="584" font-weight="700" fill="#1d4ed8">user_id</text><text x="1012" y="584" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="1052" y="584" fill="#6b7280">FK → users</text>
+      <text x="934" y="608" font-weight="700" fill="#1d4ed8">song_id</text><text x="1012" y="608" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INT</text><text x="1052" y="608" fill="#6b7280">FK → songs</text>
+      <text x="934" y="632" font-weight="700" fill="#111827">time</text><text x="1012" y="632" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="1052" y="632" fill="#6b7280">最近点歌时间（置顶）</text>
+      <text x="934" y="656" font-weight="700" fill="#111827">remark</text><text x="1012" y="656" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="1052" y="656" fill="#6b7280">用户备注</text>
+      <text x="934" y="680" font-weight="700" fill="#111827">day</text><text x="1012" y="680" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">TEXT</text><text x="1052" y="680" fill="#6b7280">最近点歌日期</text>
+      <text x="934" y="704" font-weight="700" fill="#111827">day_count</text><text x="1012" y="704" fill="#6b7280" font-family="ui-monospace,Consolas,monospace">INT</text><text x="1052" y="704" fill="#6b7280">当日点歌次数</text>
+      <text x="934" y="728" font-size="12" fill="#0f766e" font-style="italic" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">UNIQUE(user_id, song_id)</text>
+    </g>
+  </g>
+
+  <!-- FK 箭头 -->
+  <path d="M920 584 H 864" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M920 608 C 900 608 850 540 822 476" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <text x="560" y="762" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">每用户每首歌仅一条记录：重复点歌 → 记录置顶 + 当日次数累加；每日上限由 QQ_SONG_DAILY_LIMIT 控制</text>
+</svg>

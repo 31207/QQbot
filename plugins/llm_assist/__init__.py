@@ -62,6 +62,10 @@ _memories: dict[str, list[dict]] = {}
 _pending_share: dict[str, dict] = {}
 # 分享搜索后待确认点歌：uid -> True
 _pending_order: dict[str, bool] = {}
+# 帮助菜单：等待用户选编号的集合
+_help_user: set[str] = set()
+# 已开启的功能模式("song" / "search")：uid -> mode
+_pending_mode: dict[str, str] = {}
 
 
 def _get_plugin(name: str):
@@ -886,6 +890,75 @@ if CONFIGURED:
 
             history = _mem(uid)
             history.append({"role": "user", "content": text, "ts": time.time()})
+
+            # 帮助菜单：直接弹出并进入选择
+            compact = "".join(text.split())
+            if compact in ("帮助", "菜单"):
+                song_mod = _get_plugin("qq_song")
+                menu = song_mod.HELP_MENU if song_mod is not None else "帮助暂不可用。"
+                await bot.send(event, menu)
+                _help_user.add(uid)
+                return
+
+            # 帮助菜单选编号：看说明 / 开启功能
+            if uid in _help_user:
+                _help_user.discard(uid)
+                song_mod = _get_plugin("qq_song")
+                key = text.strip().lstrip("/")
+                if song_mod is not None:
+                    if key == "3":
+                        records = song_mod.STORE.list_for_user(uid, song_mod.RECORD_LIMIT)
+                        await bot.send(
+                            event,
+                            song_mod.format_records(records)
+                            if records
+                            else "你还没有点歌记录。先「搜索 歌名」搜索，再「点歌 序号」即可点歌。",
+                        )
+                        return
+                    if key == "4":
+                        await bot.send(
+                            event,
+                            song_mod.format_remaining(
+                                song_mod.STORE.count_for_user_today(uid),
+                                song_mod.DAILY_LIMIT,
+                            ),
+                        )
+                        return
+                    detail = (song_mod.HELP_DETAILS or {}).get(key)
+                    if detail is not None:
+                        if key == "1":
+                            _pending_mode[uid] = "song"
+                            await bot.send(
+                                event, detail + "\n\n已开启点歌模式：直接回复数字序号即可点歌。"
+                            )
+                            return
+                        if key == "2":
+                            _pending_mode[uid] = "search"
+                            await bot.send(
+                                event, detail + "\n\n已开启搜索模式：直接发送歌名即可搜索。"
+                            )
+                            return
+                        await bot.send(event, detail + "\n\n该功能已开启，按上方说明使用。")
+                        return
+
+            # 已开启的点歌/搜索模式（一次性）
+            if uid in _pending_mode:
+                mode = _pending_mode.pop(uid)
+                if mode == "song" and text.strip().isdigit():
+                    result = await _tool_order(uid, int(text.strip()))
+                    reply = await _phrase_reply(text, result.get("summary", ""))
+                    if reply:
+                        await bot.send(event, reply)
+                        history.append(
+                            {"role": "assistant", "content": reply, "ts": time.time()}
+                        )
+                    return
+                if mode == "search":
+                    t = text.strip()
+                    search_mod = _get_plugin("qq_music_search")
+                    if t and search_mod is not None and hasattr(search_mod, "do_search"):
+                        await bot.send(event, await search_mod.do_search(uid, t, None))
+                    return
 
             # 分享搜索后的确认点歌
             if uid in _pending_order:

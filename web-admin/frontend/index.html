@@ -3,141 +3,385 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>校园广播站点歌管理台</title>
+  <title>校园广播站 · 点歌管理台</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2/dist/index.css">
   <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/element-plus@2/dist/index.full.min.js"></script>
   <style>
-    :root { --accent: #4f46e5; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family: "PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
-      background: linear-gradient(180deg,#f8fafc,#eef1f7); color:#1f2937; }
-    .wrap { max-width:1120px; margin:0 auto; padding:28px 24px 60px; }
-    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
+    :root { --acc:#4f46e5; --acc2:#6366f1; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+      background:linear-gradient(180deg,#f8fafc,#eef1f7); color:#1f2937; }
+    .wrap { max-width:1180px; margin:0 auto; padding:26px 24px 60px; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
     .logo { display:flex; align-items:center; gap:14px; }
-    .logo .dot { width:12px; height:12px; border-radius:50%; background:var(--accent);
+    .logo .dot { width:12px; height:12px; border-radius:50%; background:var(--acc);
       box-shadow:0 0 0 6px rgba(79,70,229,.12); }
-    h1 { font-size:22px; font-weight:650; letter-spacing:.5px; margin:0; }
+    h1 { font-size:22px; font-weight:700; letter-spacing:.5px; margin:0; }
     .sub { color:#6b7280; font-size:13px; margin-top:4px; }
-    .tabs { display:inline-flex; background:#fff; border:1px solid #e5e7eb; border-radius:999px;
-      padding:4px; gap:4px; }
-    .tabs button { border:none; background:transparent; padding:8px 22px; border-radius:999px;
-      font-size:14px; color:#6b7280; cursor:pointer; transition:.2s; }
-    .tabs button.on { background:var(--accent); color:#fff; font-weight:600; }
-    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
-    .card { background:#fff; border:1px solid #eef0f5; border-radius:16px; padding:18px;
+    nav.tabs { display:flex; gap:6px; background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+      padding:6px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+    nav.tabs button { border:none; background:transparent; padding:8px 18px; border-radius:10px;
+      font-size:14px; color:#6b7280; cursor:pointer; transition:.18s; white-space:nowrap; }
+    nav.tabs button.on { background:var(--acc); color:#fff; font-weight:600; }
+    .cards { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:18px; }
+    .card { background:#fff; border:1px solid #eef0f5; border-radius:16px; padding:16px;
       box-shadow:0 1px 2px rgba(16,24,40,.04); }
-    .card .num { font-size:28px; font-weight:700; }
+    .card .num { font-size:26px; font-weight:700; }
     .card .lbl { color:#6b7280; font-size:13px; margin-top:2px; }
     .panel { background:#fff; border:1px solid #eef0f5; border-radius:16px; overflow:hidden;
       box-shadow:0 1px 2px rgba(16,24,40,.04); }
-    .panel .hd { padding:16px 20px; border-bottom:1px solid #f3f4f6; font-weight:600; }
-    .el-table { --el-table-border-color:#f0f1f5; }
-    .el-button--primary { --el-button-bg-color:var(--accent); --el-button-border-color:var(--accent); }
+    .panel .hd { padding:14px 18px; border-bottom:1px solid #f3f4f6; font-weight:600;
+      display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     .pill { padding:3px 10px; border-radius:999px; font-size:12px; }
+    .el-table { --el-table-border-color:#f0f1f5; }
+    .el-button--primary { --el-button-bg-color:var(--acc); --el-button-border-color:var(--acc); }
+    .bars { display:flex; align-items:flex-end; gap:10px; height:140px; padding:12px; }
+    .bar { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .bar .i { width:100%; background:linear-gradient(180deg,var(--acc2),var(--acc)); border-radius:6px 6px 0 0;
+      min-height:2px; }
+    .bar .d { font-size:11px; color:#6b7280; }
+    .login-mask { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; }
+    .login-box { background:#fff; border-radius:18px; padding:32px; width:380px; box-shadow:0 10px 40px rgba(0,0,0,.2); }
+    .login-box h2 { margin:0 0 8px; }
+    .login-box p { color:#6b7280; font-size:13px; margin:0 0 16px; }
   </style>
 </head>
 <body>
 <div id="app">
-  <div class="wrap">
+  <!-- 登录门 -->
+  <div v-if="needLogin" class="login-mask">
+    <div class="login-box">
+      <h2>管理台登录</h2>
+      <p>请输入访问 Token（由管理员设置）</p>
+      <el-input v-model="loginInput" type="password" placeholder="Token" @keyup.enter="doLogin" />
+      <div style="margin-top:16px">
+        <el-button type="primary" style="width:100%" @click="doLogin">进入管理台</el-button>
+      </div>
+    </div>
+  </div>
+
+  <div v-else class="wrap">
     <header>
       <div class="logo"><span class="dot"></span>
-        <div><h1>校园广播站 · 点歌管理台</h1><div class="sub">点歌池 / 播放历史 / 选用管理</div></div>
+        <div><h1>校园广播站 · 点歌管理台</h1><div class="sub">点歌池 / 播放历史 / 用户 / 统计 / 权限白名单</div></div>
       </div>
-      <div class="tabs">
-        <button :class="{on:tab==='pool'}" @click="tab='pool'">点歌池</button>
-        <button :class="{on:tab==='history'}" @click="tab='history'">播放历史</button>
-      </div>
+      <nav class="tabs">
+        <button :class="{on:tab==='pool'}" @click="go('pool')">点歌池</button>
+        <button :class="{on:tab==='history'}" @click="go('history')">播放历史</button>
+        <button :class="{on:tab==='users'}" @click="go('users')">用户</button>
+        <button :class="{on:tab==='stats'}" @click="go('stats')">统计</button>
+        <button :class="{on:tab==='perms'}" @click="go('perms')">白名单</button>
+      </nav>
     </header>
 
-    <div class="stats">
-      <div class="card"><div class="num">{{stats.total}}</div><div class="lbl">累计点歌记录</div></div>
-      <div class="card"><div class="num">{{stats.requests}}</div><div class="lbl">被点歌曲数</div></div>
-      <div class="card"><div class="num">{{stats.pending}}</div><div class="lbl">待选用</div></div>
-      <div class="card"><div class="num">{{stats.banned}}</div><div class="lbl">已禁播</div></div>
-    </div>
-
-    <div class="panel" v-loading="loading">
-      <div class="hd">{{ tab==='pool' ? '点歌池' : '播放历史' }}</div>
-      <template v-if="tab==='pool'">
-        <el-table :data="pool" style="width:100%">
-          <el-table-column label="状态" width="120">
+    <!-- 点歌池 -->
+    <template v-if="tab==='pool'">
+      <div class="panel" v-loading="loading.pool">
+        <div class="hd">
+          <span>点歌池</span>
+          <div class="filters">
+            <el-input v-model="poolFilter.name" placeholder="按歌名" clearable style="width:150px" @keyup.enter="loadPool" />
+            <el-input v-model="poolFilter.user" placeholder="按点歌人QQ" clearable style="width:150px" @keyup.enter="loadPool" />
+            <el-select v-model="poolFilter.status" placeholder="状态" clearable style="width:130px" @change="loadPool">
+              <el-option label="待选用" value="pending" /><el-option label="已选用" value="selected" /><el-option label="已禁播" value="banned" />
+            </el-select>
+            <el-button @click="loadPool">查询</el-button>
+            <el-button type="primary" :disabled="!poolSel.length" @click="batchSelect">选用选中({{ poolSel.length }})</el-button>
+          </div>
+        </div>
+        <el-table :data="pool" @selection-change="onSelChange" style="width:100%">
+          <el-table-column type="selection" width="42" />
+          <el-table-column label="状态" width="96">
             <template #default="{row}">
               <span v-if="row.selected" class="pill" style="background:#ecfdf5;color:#059669">已选用</span>
               <span v-else-if="row.is_banned" class="pill" style="background:#fee2e2;color:#dc2626">已禁播</span>
               <span v-else class="pill" style="background:#eff6ff;color:#2563eb">待选用</span>
             </template>
           </el-table-column>
-          <el-table-column prop="name" label="歌曲"></el-table-column>
-          <el-table-column prop="artist" label="歌手" width="140"></el-table-column>
-          <el-table-column label="点歌人" width="180">
+          <el-table-column label="歌曲" min-width="180">
+            <template #default="{row}"><span style="font-weight:600">{{ row.name }}</span></template>
+          </el-table-column>
+          <el-table-column label="歌手" width="140">
+            <template #default="{row}">{{ row.artist }}</template>
+          </el-table-column>
+          <el-table-column label="点歌人" min-width="160">
             <template #default="{row}"><span style="color:#6b7280">{{ (row.requesters||[]).join('、') || '—' }}</span></template>
           </el-table-column>
-          <el-table-column prop="req_count" label="次数" width="70"></el-table-column>
-          <el-table-column prop="last_time" label="最近点歌" width="170"></el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="次数" width="64">
+            <template #default="{row}">{{ row.req_count }}</template>
+          </el-table-column>
+          <el-table-column label="最近点歌" width="160">
+            <template #default="{row}">{{ row.last_time }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="230" fixed="right">
             <template #default="{row}">
-              <el-button size="small" type="primary" :disabled="row.selected" @click="selectSong(row)">选用</el-button>
-              <el-button size="small" :type="row.is_banned?'success':'danger'" :plain="!row.is_banned" @click="banSong(row)">{{ row.is_banned ? '解禁' : '禁播' }}</el-button>
+              <el-button size="small" @click="openDetail(row)">详情</el-button>
+              <el-button size="small" type="primary" :disabled="row.selected" @click="selectOne(row)">选用</el-button>
+              <el-button size="small" :type="row.is_banned?'success':'danger'" :plain="!row.is_banned" @click="banOne(row)">{{ row.is_banned ? '解禁' : '禁播' }}</el-button>
             </template>
           </el-table-column>
         </el-table>
-      </template>
-      <template v-else>
+      </div>
+    </template>
+
+    <!-- 播放历史 -->
+    <template v-else-if="tab==='history'">
+      <div class="panel" v-loading="loading.history">
+        <div class="hd">
+          <span>播放历史</span>
+          <div class="filters">
+            <el-input v-model="histFilter.name" placeholder="按歌名" clearable style="width:150px" @keyup.enter="loadHistory" />
+            <el-date-picker v-model="histFilter.date" type="date" placeholder="按日期" value-format="YYYY-MM-DD" clearable style="width:160px" @change="loadHistory" />
+            <el-button @click="loadHistory">查询</el-button>
+          </div>
+        </div>
         <el-table :data="history" style="width:100%">
-          <el-table-column prop="played_at" label="播放时间" width="180"></el-table-column>
-          <el-table-column prop="name" label="歌曲"></el-table-column>
-          <el-table-column prop="artist" label="歌手" width="140"></el-table-column>
-          <el-table-column prop="user_id" label="点歌人" width="140"></el-table-column>
-          <el-table-column prop="note" label="备注"></el-table-column>
+          <el-table-column label="播放时间" width="180"><template #default="{row}">{{ row.played_at }}</template></el-table-column>
+          <el-table-column label="歌曲" min-width="180"><template #default="{row}">{{ row.name }}</template></el-table-column>
+          <el-table-column label="歌手" width="140"><template #default="{row}">{{ row.artist }}</template></el-table-column>
+          <el-table-column label="点歌人" width="140"><template #default="{row}">{{ row.user_id }}</template></el-table-column>
+          <el-table-column label="备注"><template #default="{row}">{{ row.note }}</template></el-table-column>
         </el-table>
-      </template>
-    </div>
+      </div>
+    </template>
+
+    <!-- 用户 -->
+    <template v-else-if="tab==='users'">
+      <div class="panel" v-loading="loading.users">
+        <div class="hd"><span>用户管理</span></div>
+        <el-table :data="users" style="width:100%">
+          <el-table-column label="QQ号" width="180">
+            <template #default="{row}"><span class="qq" style="font-family:monospace;font-weight:600">{{ row.user_id }}</span></template>
+          </el-table-column>
+          <el-table-column label="状态" width="110">
+            <template #default="{row}">
+              <span v-if="row.is_banned" class="pill" style="background:#fee2e2;color:#dc2626">已封禁</span>
+              <span v-else class="pill" style="background:#ecfdf5;color:#059669">正常</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="今日已点" width="90">
+            <template #default="{row}">{{ row.today_count }}</template>
+          </el-table-column>
+          <el-table-column label="加入时间" width="180">
+            <template #default="{row}">{{ row.created_at }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="120">
+            <template #default="{row}">
+              <el-button size="small" :type="row.is_banned?'success':'danger'" :plain="!row.is_banned" @click="toggleBan(row)">{{ row.is_banned ? '解封' : '封禁' }}</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </template>
+
+    <!-- 统计 -->
+    <template v-else-if="tab==='stats'">
+      <div class="cards">
+        <div class="card"><div class="num">{{stats.total}}</div><div class="lbl">累计点歌记录</div></div>
+        <div class="card"><div class="num">{{stats.requests}}</div><div class="lbl">被点歌曲数</div></div>
+        <div class="card"><div class="num">{{stats.pending}}</div><div class="lbl">待选用</div></div>
+        <div class="card"><div class="num">{{stats.selected}}</div><div class="lbl">已选用</div></div>
+        <div class="card"><div class="num">{{stats.banned}}</div><div class="lbl">已禁播</div></div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <div class="hd">热门歌曲（点歌次数 Top10）</div>
+        <el-table :data="stats.hot" style="width:100%">
+          <el-table-column type="index" width="60" />
+          <el-table-column label="歌曲" min-width="200"><template #default="{row}">{{ row.name }}</template></el-table-column>
+          <el-table-column label="歌手" width="160"><template #default="{row}">{{ row.artist }}</template></el-table-column>
+          <el-table-column label="次数" width="80"><template #default="{row}">{{ row.cnt }}</template></el-table-column>
+        </el-table>
+      </div>
+    </template>
+
+    <!-- 白名单 -->
+    <template v-else-if="tab==='perms'">
+      <div class="panel" v-loading="loading.perms">
+        <div class="hd">
+          <span>权限白名单（data/permissions.json）</span>
+          <el-button type="primary" @click="savePerms">保存</el-button>
+        </div>
+        <div style="padding:16px 20px">
+          <p style="margin-top:0;color:#6b7280">每行一个 QQ 号，保存后 bot 会自动热加载。</p>
+          <p style="font-weight:600">管理员（可重置次数 / 禁播歌曲）</p>
+          <el-input v-model="permsText.admins" type="textarea" :rows="3" placeholder="每行一个QQ号" style="margin-bottom:12px" />
+          <p style="font-weight:600;margin-top:8px">超级管理员（管理员 + 封禁/解封用户）</p>
+          <el-input v-model="permsText.super_admins" type="textarea" :rows="3" placeholder="每行一个QQ号" />
+        </div>
+      </div>
+    </template>
+
+    <!-- 点歌详情弹窗 -->
+    <el-dialog v-model="detailVisible" :title="'点歌详情 · ' + (detailSong?.name||'')" width="560px">
+      <el-table :data="detailRows" style="width:100%">
+        <el-table-column label="点歌人" width="150"><template #default="{row}">{{ row.user_id }}</template></el-table-column>
+        <el-table-column label="时间" width="170"><template #default="{row}">{{ row.time }}</template></el-table-column>
+        <el-table-column label="备注"><template #default="{row}">{{ row.remark }}</template></el-table-column>
+        <el-table-column label="当日次数" width="90"><template #default="{row}">{{ row.day_count }}</template></el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </div>
 
 <script>
-const { createApp, ref, onMounted } = Vue;
+const { createApp, ref, reactive, computed, onMounted } = Vue;
 const { ElMessage, ElMessageBox } = ElementPlus;
-const api = {
-  get: (p) => fetch(p).then(r => r.json()),
-  post: (p, body) => fetch(p, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) }).then(r => r.json())
-};
+
+const auth = { token: localStorage.getItem('admin_token') || '' };
+const needLogin = ref(false);
+
+async function req(path, opts = {}) {
+  const headers = { 'Content-Type':'application/json', ...(opts.headers || {}) };
+  if (auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
+  const res = await fetch(path, { ...opts, headers });
+  if (res.status === 401) { needLogin.value = true; throw new Error('未授权'); }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || ('HTTP ' + res.status)); }
+  return res.json();
+}
+
 createApp({
   setup() {
     const tab = ref('pool');
-    const loading = ref(false);
-    const pool = ref([]);
-    const history = ref([]);
-    const stats = ref({ total:0, requests:0, pending:0, selected:0, banned:0 });
-    async function load() {
-      loading.value = true;
+    const loginInput = ref('');
+    const loading = reactive({ pool:false, history:false, users:false, stats:false, perms:false });
+    const pool = ref([]); const poolSel = ref([]);
+    const poolFilter = reactive({ name:'', user:'', status:'' });
+    const history = ref([]); const histFilter = reactive({ name:'', date:'' });
+    const users = ref([]);
+    const stats = ref({ total:0, requests:0, pending:0, selected:0, banned:0, hot:[], trend:[] });
+    const perms = { admins:[], super_admins:[] };
+    const permsText = reactive({ admins:'', super_admins:'' });
+    const detailVisible = ref(false); const detailSong = ref(null); const detailRows = ref([]);
+
+    async function loadPool() {
+      loading.pool = true;
       try {
-        const [p, h, s] = await Promise.all([api.get('/api/pool'), api.get('/api/history'), api.get('/api/stats')]);
-        pool.value = p.data || [];
-        history.value = h.data || [];
-        stats.value = s.data || stats.value;
-      } catch (e) { ElMessage.error('加载失败：' + e); }
-      finally { loading.value = false; }
+        const q = new URLSearchParams();
+        if (poolFilter.name) q.set('name', poolFilter.name);
+        if (poolFilter.user) q.set('user', poolFilter.user);
+        if (poolFilter.status) q.set('status', poolFilter.status);
+        const r = await req('/api/pool' + (q.toString() ? '?' + q.toString() : ''));
+        pool.value = r.data || [];
+      } catch (e) { ElMessage.error('加载点歌池失败：' + e.message); }
+      finally { loading.pool = false; }
     }
-    async function selectSong(row) {
-      let note = '';
+    async function loadHistory() {
+      loading.history = true;
       try {
-        const r = await ElMessageBox.prompt('可填备注（如期数/档期），留空直接选用', '选用 · ' + row.name, { inputValue:'', confirmButtonText:'选用', cancelButtonText:'取消' });
-        note = r.value || '';
-      } catch (e) { if (e === 'cancel') return; }
-      await api.post('/api/songs/' + row.id + '/select', { user_id:(row.requesters||[])[0] || '', note });
-      ElMessage.success('已选用并记入播放历史');
-      load();
+        const q = new URLSearchParams();
+        if (histFilter.name) q.set('name', histFilter.name);
+        if (histFilter.date) q.set('date', histFilter.date);
+        const r = await req('/api/history' + (q.toString() ? '?' + q.toString() : ''));
+        history.value = r.data || [];
+      } catch (e) { ElMessage.error('加载播放历史失败：' + e.message); }
+      finally { loading.history = false; }
     }
-    async function banSong(row) {
-      const banned = row.is_banned;
-      await api.post('/api/songs/' + row.id + '/' + (banned ? 'unban' : 'ban'));
-      ElMessage.success(banned ? '已解禁' : '已禁播');
-      load();
+    async function loadUsers() {
+      loading.users = true;
+      try { const r = await req('/api/users'); users.value = r.data || []; }
+      catch (e) { ElMessage.error('加载用户失败：' + e.message); }
+      finally { loading.users = false; }
     }
-    onMounted(load);
-    return { tab, loading, pool, history, stats, selectSong, banSong };
+    async function loadStats() {
+      loading.stats = true;
+      try { const r = await req('/api/stats'); stats.value = Object.assign({ total:0, requests:0, pending:0, selected:0, banned:0, hot:[], trend:[] }, r.data || {}); }
+      catch (e) { ElMessage.error('加载统计失败：' + e.message); }
+      finally { loading.stats = false; }
+    }
+    async function loadPerms() {
+      loading.perms = true;
+      try {
+        const r = await req('/api/permissions');
+        perms.admins = r.data?.admins || [];
+        perms.super_admins = r.data?.super_admins || [];
+        permsText.admins = perms.admins.join('\n');
+        permsText.super_admins = perms.super_admins.join('\n');
+      } catch (e) { ElMessage.error('加载白名单失败：' + e.message); }
+      finally { loading.perms = false; }
+    }
+
+    async function go(t) {
+      tab.value = t;
+      if (t === 'pool') loadPool();
+      else if (t === 'history') loadHistory();
+      else if (t === 'users') loadUsers();
+      else if (t === 'stats') loadStats();
+      else if (t === 'perms') loadPerms();
+    }
+
+    async function doLogin() {
+      if (!loginInput.value) { ElMessage.warning('请输入 Token'); return; }
+      try {
+        const r = await req('/api/login', { method:'POST', body: JSON.stringify({ token: loginInput.value }) });
+        auth.token = r.token || loginInput.value;
+        localStorage.setItem('admin_token', auth.token);
+        needLogin.value = false;
+        ElMessage.success('登录成功');
+        go(tab.value);
+      } catch (e) { ElMessage.error(e.message || 'Token 错误'); }
+    }
+
+    async function selectOne(row) {
+      try {
+        await req('/api/songs/' + row.id + '/select', { method:'POST', body: JSON.stringify({ user_id:(row.requesters||[])[0]||'', note:'' }) });
+        ElMessage.success('已选用：' + row.name);
+        loadPool(); loadStats(); loadHistory();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    async function batchSelect() {
+      const ids = poolSel.value.map(r => r.id);
+      if (!ids.length) return;
+      try {
+        let note = '';
+        try { const p = await ElMessageBox.prompt('可选备注（如第几期）', '批量选用 ' + ids.length + ' 首', { inputValue:'' }); note = p.value || ''; } catch (e) {}
+        const r = await req('/api/songs/select_many', { method:'POST', body: JSON.stringify({ ids, note }) });
+        ElMessage.success('已批量选用 ' + r.count + ' 首');
+        loadPool(); loadStats(); loadHistory(); poolSel.value = [];
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    async function banOne(row) {
+      try {
+        const banned = row.is_banned;
+        await req('/api/songs/' + row.id + '/' + (banned ? 'unban' : 'ban'), { method:'POST' });
+        ElMessage.success(banned ? '已解禁' : '已禁播');
+        loadPool(); loadStats();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    async function toggleBan(row) {
+      try {
+        await req('/api/users/' + row.user_id + '/' + (row.is_banned ? 'unban' : 'ban'), { method:'POST' });
+        ElMessage.success(row.is_banned ? '已解封' : '已封禁');
+        loadUsers();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    async function openDetail(row) {
+      detailSong.value = row;
+      detailVisible.value = true;
+      try { const r = await req('/api/songs/' + row.id + '/requests'); detailRows.value = r.data || []; }
+      catch (e) { ElMessage.error(e.message); detailRows.value = []; }
+    }
+    function onSelChange(c) { poolSel.value = c; }
+    async function savePerms() {
+      const admins = permsText.admins.split('\n').map(s => s.trim()).filter(Boolean);
+      const super_admins = permsText.super_admins.split('\n').map(s => s.trim()).filter(Boolean);
+      try {
+        await req('/api/permissions', { method:'PUT', body: JSON.stringify({ admins, super_admins }) });
+        ElMessage.success('白名单已保存');
+      } catch (e) { ElMessage.error(e.message); }
+    }
+
+    function checkAuth() {
+      // 首次探测：若未设置 token，后端不鉴权则正常；若鉴权则弹出登录
+      if (!auth.token) {
+        req('/api/pool').then(() => {}).catch(() => {});
+      }
+    }
+
+    onMounted(() => { go('pool'); checkAuth(); });
+
+    return { tab, needLogin, loginInput, loading, pool, poolSel, poolFilter, history, histFilter, users, stats, permsText, detailVisible, detailSong, detailRows, go, loadPool, loadHistory, loadUsers, loadStats, loadPerms, doLogin, selectOne, batchSelect, banOne, toggleBan, openDetail, onSelChange, savePerms };
   }
 }).use(ElementPlus).mount('#app');
 </script>

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>校园广播站点歌管理台</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2/dist/index.css">
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/element-plus@2/dist/index.full.min.js"></script>
+  <style>
+    :root { --accent: #4f46e5; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: "PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+      background: linear-gradient(180deg,#f8fafc,#eef1f7); color:#1f2937; }
+    .wrap { max-width:1120px; margin:0 auto; padding:28px 24px 60px; }
+    header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
+    .logo { display:flex; align-items:center; gap:14px; }
+    .logo .dot { width:12px; height:12px; border-radius:50%; background:var(--accent);
+      box-shadow:0 0 0 6px rgba(79,70,229,.12); }
+    h1 { font-size:22px; font-weight:650; letter-spacing:.5px; margin:0; }
+    .sub { color:#6b7280; font-size:13px; margin-top:4px; }
+    .tabs { display:inline-flex; background:#fff; border:1px solid #e5e7eb; border-radius:999px;
+      padding:4px; gap:4px; }
+    .tabs button { border:none; background:transparent; padding:8px 22px; border-radius:999px;
+      font-size:14px; color:#6b7280; cursor:pointer; transition:.2s; }
+    .tabs button.on { background:var(--accent); color:#fff; font-weight:600; }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+    .card { background:#fff; border:1px solid #eef0f5; border-radius:16px; padding:18px;
+      box-shadow:0 1px 2px rgba(16,24,40,.04); }
+    .card .num { font-size:28px; font-weight:700; }
+    .card .lbl { color:#6b7280; font-size:13px; margin-top:2px; }
+    .panel { background:#fff; border:1px solid #eef0f5; border-radius:16px; overflow:hidden;
+      box-shadow:0 1px 2px rgba(16,24,40,.04); }
+    .panel .hd { padding:16px 20px; border-bottom:1px solid #f3f4f6; font-weight:600; }
+    .el-table { --el-table-border-color:#f0f1f5; }
+    .el-button--primary { --el-button-bg-color:var(--accent); --el-button-border-color:var(--accent); }
+    .pill { padding:3px 10px; border-radius:999px; font-size:12px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="wrap">
+    <header>
+      <div class="logo"><span class="dot"></span>
+        <div><h1>校园广播站 · 点歌管理台</h1><div class="sub">点歌池 / 播放历史 / 选用管理</div></div>
+      </div>
+      <div class="tabs">
+        <button :class="{on:tab==='pool'}" @click="tab='pool'">点歌池</button>
+        <button :class="{on:tab==='history'}" @click="tab='history'">播放历史</button>
+      </div>
+    </header>
+
+    <div class="stats">
+      <div class="card"><div class="num">{{stats.total}}</div><div class="lbl">累计点歌记录</div></div>
+      <div class="card"><div class="num">{{stats.requests}}</div><div class="lbl">被点歌曲数</div></div>
+      <div class="card"><div class="num">{{stats.pending}}</div><div class="lbl">待选用</div></div>
+      <div class="card"><div class="num">{{stats.banned}}</div><div class="lbl">已禁播</div></div>
+    </div>
+
+    <div class="panel" v-loading="loading">
+      <div class="hd">{{ tab==='pool' ? '点歌池' : '播放历史' }}</div>
+      <template v-if="tab==='pool'">
+        <el-table :data="pool" style="width:100%">
+          <el-table-column label="状态" width="120">
+            <template #default="{row}">
+              <span v-if="row.selected" class="pill" style="background:#ecfdf5;color:#059669">已选用</span>
+              <span v-else-if="row.is_banned" class="pill" style="background:#fee2e2;color:#dc2626">已禁播</span>
+              <span v-else class="pill" style="background:#eff6ff;color:#2563eb">待选用</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="name" label="歌曲"></el-table-column>
+          <el-table-column prop="artist" label="歌手" width="140"></el-table-column>
+          <el-table-column label="点歌人" width="180">
+            <template #default="{row}"><span style="color:#6b7280">{{ (row.requesters||[]).join('、') || '—' }}</span></template>
+          </el-table-column>
+          <el-table-column prop="req_count" label="次数" width="70"></el-table-column>
+          <el-table-column prop="last_time" label="最近点歌" width="170"></el-table-column>
+          <el-table-column label="操作" width="200" fixed="right">
+            <template #default="{row}">
+              <el-button size="small" type="primary" :disabled="row.selected" @click="selectSong(row)">选用</el-button>
+              <el-button size="small" :type="row.is_banned?'success':'danger'" :plain="!row.is_banned" @click="banSong(row)">{{ row.is_banned ? '解禁' : '禁播' }}</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <template v-else>
+        <el-table :data="history" style="width:100%">
+          <el-table-column prop="played_at" label="播放时间" width="180"></el-table-column>
+          <el-table-column prop="name" label="歌曲"></el-table-column>
+          <el-table-column prop="artist" label="歌手" width="140"></el-table-column>
+          <el-table-column prop="user_id" label="点歌人" width="140"></el-table-column>
+          <el-table-column prop="note" label="备注"></el-table-column>
+        </el-table>
+      </template>
+    </div>
+  </div>
+</div>
+
+<script>
+const { createApp, ref, onMounted } = Vue;
+const { ElMessage, ElMessageBox } = ElementPlus;
+const api = {
+  get: (p) => fetch(p).then(r => r.json()),
+  post: (p, body) => fetch(p, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) }).then(r => r.json())
+};
+createApp({
+  setup() {
+    const tab = ref('pool');
+    const loading = ref(false);
+    const pool = ref([]);
+    const history = ref([]);
+    const stats = ref({ total:0, requests:0, pending:0, selected:0, banned:0 });
+    async function load() {
+      loading.value = true;
+      try {
+        const [p, h, s] = await Promise.all([api.get('/api/pool'), api.get('/api/history'), api.get('/api/stats')]);
+        pool.value = p.data || [];
+        history.value = h.data || [];
+        stats.value = s.data || stats.value;
+      } catch (e) { ElMessage.error('加载失败：' + e); }
+      finally { loading.value = false; }
+    }
+    async function selectSong(row) {
+      let note = '';
+      try {
+        const r = await ElMessageBox.prompt('可填备注（如期数/档期），留空直接选用', '选用 · ' + row.name, { inputValue:'', confirmButtonText:'选用', cancelButtonText:'取消' });
+        note = r.value || '';
+      } catch (e) { if (e === 'cancel') return; }
+      await api.post('/api/songs/' + row.id + '/select', { user_id:(row.requesters||[])[0] || '', note });
+      ElMessage.success('已选用并记入播放历史');
+      load();
+    }
+    async function banSong(row) {
+      const banned = row.is_banned;
+      await api.post('/api/songs/' + row.id + '/' + (banned ? 'unban' : 'ban'));
+      ElMessage.success(banned ? '已解禁' : '已禁播');
+      load();
+    }
+    onMounted(load);
+    return { tab, loading, pool, history, stats, selectSong, banSong };
+  }
+}).use(ElementPlus).mount('#app');
+</script>
+</body>
+</html>

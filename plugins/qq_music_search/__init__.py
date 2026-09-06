@@ -111,6 +111,31 @@ async def do_search(sender_id: str, keyword: str, source: str | None = None):
     return MessageSegment.image(img)
 
 
+async def paginate(sender_id: str, direction: str):
+    """翻页：direction 为 next / prev。返回 MessageSegment 图片或提示文本。"""
+    sess = _active_session(sender_id)
+    if not sess:
+        return "当前没有进行中的搜索，先发送「搜索 歌名」开始搜索"
+    if direction == "prev":
+        if sess["page"] <= 1:
+            return "已经是第一页了"
+        sess["page"] -= 1
+    else:
+        if sess["page"] >= sess["total_pages"]:
+            return "已经是最后一页了"
+        sess["page"] += 1
+    img = await _render_session(sess)
+    if img is None:
+        return "图片生成失败，请稍后重试"
+    return img
+
+
+def exit_search(sender_id: str) -> str:
+    """退出当前搜索会话。"""
+    _sessions.pop(sender_id, None)
+    return "已退出音乐搜索"
+
+
 def parse_search_command(text: str) -> tuple[str | None, str] | None:
     """「搜索 [平台] 关键词」→ (平台, 关键词)；非搜索指令返回 None。"""
     t = (text or "").lstrip("/").strip()

@@ -13,6 +13,7 @@
 - **备注**：发 `备注 编号 内容` 给已点歌曲加备注，`备注 编号` 清除备注。
 - **查询剩余点歌次数**：返回「今天已点 X/上限 首」。
 - **管理命令**：`封禁 用户ID` / `解封 用户ID` / `封禁列表`（仅超级管理员 `SUPERUSERS`）；被封禁用户无法使用点歌功能。
+- **AI 智能助手（可选，默认关闭）**：对接任意 OpenAI 兼容大模型（DeepSeek / 智谱 GLM / 通义千问 / Kimi），私聊消息先交给大模型理解意图，再调用上面这些音乐功能；回复是傲娇小猫“咪”的口吻，支持多轮对话、并自动避免工具结果与大模型回复重复。配置 `LLM_ENABLED=true` 后开启。
 - 所有指令**仅私聊**可用（私聊直接发，无需 @）。
 
 ## 系统架构
@@ -31,7 +32,8 @@ qq-bot/
 ├── .env / .env.prod          # 驱动/端口/插件配置
 ├── plugins/
 │   ├── qq_music_search/      # 音乐搜索插件（api/covers/render）
-│   └── qq_song/              # 点歌插件（点歌/歌单/备注/存储）
+│   ├── qq_song/              # 点歌插件（点歌/歌单/备注/存储）
+│   └── llm_assist/           # LLM 智能助手（意图理解 / 函数调用 / 多轮记忆）
 ├── data/
 │   ├── song_requests.db      # SQLite 数据库
 │   └── covers/               # 封面缓存
@@ -44,7 +46,7 @@ qq-bot/
    cd D:\qq-bot
    python -m venv .venv
    .\.venv\Scripts\Activate.ps1
-   pip install -U "nonebot2[fastapi,websockets]" nonebot-adapter-onebot httpx pillow
+   pip install -U "nonebot2[fastapi,websockets]" nonebot-adapter-onebot httpx pillow openai
    ```
 2. 部署 **Go Music API**（另行搭建），并在 `.env` 中把 `QQ_MUSIC_API_BASE` 指向它。
 3. 配置：`Copy-Item .env.example .env`。
@@ -81,6 +83,28 @@ qq-bot/
 | `QQ_SONG_DAILY_LIMIT` | 每用户每日点歌上限 | `5` |
 | `QQ_SONG_RECORD_LIMIT` | 歌单最多展示条数 | `20` |
 | `SUPERUSERS` | 超级管理员 QQ 号（管理命令权限），JSON 数组 | `[]` |
+| `LLM_ENABLED` | 是否开启 LLM 智能助手（`true`/`false`） | `false` |
+| `LLM_API_BASE` | LLM 接口地址（OpenAI 兼容） | 空 |
+| `LLM_API_KEY` | LLM API Key | 空 |
+| `LLM_MODEL` | 模型名（如 `deepseek-chat`、`glm-5.3-flash`、`qwen-flash`） | `deepseek-chat` |
+| `LLM_TIMEOUT` | LLM 请求超时（秒） | `30` |
+| `LLM_MEMORY_TTL` | 多轮记忆保留时长（秒） | `1800` |
+| `LLM_MEMORY_TURNS` | 记忆最多保留的消息条数 | `12` |
+| `LLM_MAX_STEPS` | 单次对话最大函数调用步数 | `4` |
+
+## LLM 智能助手（可选）
+开启后，私聊消息会先经大模型理解：
+- 识别为**明确指令**（`搜索` / `点歌` / `我的歌单` / `剩余次数` / `备注` / `帮助` / `上一页` / `下一页` 等）时走本地快速路由，直接调用对应功能，再用**一次**大模型调用把结果用“咪”的傲娇口吻说出来；
+- 其余自然语言/闲聊由大模型用函数调用理解并回复，支持多轮记忆；
+- 未配置 `LLM_ENABLED=true` 及接口信息时，插件不接管消息，机器人按原有确定性指令工作。
+
+示例配置：
+```env
+LLM_ENABLED=true
+LLM_API_BASE=https://api.deepseek.com/v1
+LLM_API_KEY=sk-xxxx
+LLM_MODEL=deepseek-chat
+```
 
 ## 说明
 - 记录存储：SQLite，默认 `data/song_requests.db`（歌曲库 `songs`、用户 `users`、点歌记录 `user_requests` 三表）。

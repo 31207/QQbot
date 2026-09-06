@@ -60,6 +60,8 @@ else:
 _memories: dict[str, list[dict]] = {}
 # 待点分享歌曲：uid -> {source, id, name, artist, cover, url, ts}
 _pending_share: dict[str, dict] = {}
+# 分享搜索后待确认点歌：uid -> True
+_pending_order: dict[str, bool] = {}
 
 
 def _get_plugin(name: str):
@@ -758,63 +760,57 @@ async def _llm_reply_once(user_text: str) -> str:
     return (resp.choices[0].message.content or "").strip()
 
 
+async def _llm_share_query(info: dict) -> str:
+    """一次 LLM 调用：把分享歌曲转成精确搜索关键词。"""
+    msgs = [
+        {
+            "role": "system",
+            "content": "你是音乐检索助手。根据用户分享的歌曲，输出一条用于音乐搜索的精确关键词，"
+            "格式：歌名 歌手。只输出关键词，不要多余内容。",
+        },
+        {
+            "role": "user",
+            "content": f"歌名：《{info.get('title','')}》\n歌手：{info.get('artist','') or '未知'}",
+        },
+    ]
+    try:
+        r = await _client.chat.completions.create(model=LLM_MODEL, messages=msgs)
+        q = (r.choices[0].message.content or "").strip().replace("\n", " ")
+        if q:
+            return q[:80]
+    except Exception:
+        logger.exception("LLM 生成搜索词失败")
+    return f"{info.get('title','')} {info.get('artist','')}".strip()
+
+
 async def _handle_share(
     bot: Bot, event: MessageEvent, uid: str, text: str, share: dict
 ) -> None:
-    """处理分享卡片：能解析交给 LLM 读懂回复；解析失败生成提醒文本。"""
-    history = _mem(uid)
-    if share.get("title"):
-        sid = share.get("id") or ""
-        user_content = (text or "给你分享了一首歌").strip()
-        user_content += (
-            f"\n\n（用户分享了一首音乐：歌名《{share['title']}》，歌手："
-            f"{share['artist'] or '未知'}，链接：{share['url'] or '未知'}，"
-            f"平台：{share.get('source') or '未知'}，歌曲ID：{sid or '未知'}）"
-        )
-        detail = share.get("detail") or ""
-        if detail:
-            user_content += f"\n（分享卡片原文：{detail}）"
-        if sid:
-            _pending_share[uid] = {
-                "source": share.get("source") or "qq",
-                "id": sid,
-                "name": share["title"],
-                "artist": share.get("artist", ""),
-                "cover": share.get("cover", ""),
-                "url": share.get("url", ""),
-                "ts": time.time(),
-            }
-            user_content += (
-                "\n这首歌可以直接用「order_shared_song」工具加入歌单，无需搜索。"
-                "\n请先用猫猫口吻询问用户是否要点这首歌；若用户同意，再调用 "
-                "order_shared_song 加入歌单。"
-            )
-        else:
-            user_content += "\n（未能获取到这首歌曲的ID，无法直接加入歌单，可提示用户搜索。）"
-        history.append(
-            {"role": "user", "content": user_content, "ts": time.time()}
-        )
-        try:
-            reply = await _llm_reply_once(user_content)
-        except Exception:
-            logger.exception("LLM 处理分享失败")
-            reply = "人，咪看到你分享的歌了，不过刚才走神了，你再说一次呀。"
-        if reply:
-            await bot.send(event, reply)
-            history.append(
-                {"role": "assistant", "content": reply, "ts": time.time()}
-            )
-    else:
+    """分享卡片：LLM 转搜索词 → 精确搜索 → 发结果图 → 询问是否点这首。"""
+    if not share.get("title"):
         reminder = (
             "人，咪看到你发来的音乐卡片了，但没能认出是哪首歌。"
             "你可以直接把「搜索 歌名」发给咪，或发「点歌 序号」哦。"
         )
         await bot.send(event, reminder)
-        history.append(
-            {"role": "user", "content": text or "[音乐卡片·解析失败]", "ts": time.time()}
+        return
+
+    query = await _llm_share_query(share)
+    search_mod = _get_plugin("qq_music_search")
+    if search_mod is None or not hasattr(search_mod, "do_search"):
+        await bot.send(event, "咪的搜索功能暂时不可用，请直接发「搜索 歌名」哦。")
+        return
+    result = await search_mod.do_search(uid, query, None)
+    if isinstance(result, MessageSegment):
+        await bot.send(event, result)
+        _pending_order[uid] = True
+        await bot.send(
+            event,
+            "咪帮你搜到啦，上面哪首是你想点的？回复「序号」点这首歌，或者回复「要」默认点第一条。",
         )
-        history.append(
-            {"role": "assistant", "content": reminder, "ts": time.time()}
+    else:
+        await bot.send(
+            event, str(result) or "没搜到这首歌，换个关键词或直接「搜索 歌名」试试。"
         )
 
 
@@ -832,6 +828,40 @@ async def _notify_error(bot: Bot, event: MessageEvent) -> None:
         logger.exception("生成错误提示失败")
     fallback = "人，咪这边出了点小状况，你先稍等一下再试哦。"
     await bot.send(event, fallback)
+
+
+def _function_list() -> str:
+    return (
+        "—— 你可以这样点歌 ——\n"
+        "· 最方便：直接分享一首歌给我，咪帮你搜出来，你确认后就能自动点歌\n"
+        "· 搜索 歌名：找歌（如 搜索 晴天 / 搜索 qq 晴天）\n"
+        "· 点歌 序号：从结果里点选（如 点歌 3）\n"
+        "· 我的歌单：查看你点过的歌\n"
+        "· 剩余次数：查今天还能点几首\n"
+        "· 备注 编号 内容：给已点歌曲加备注\n"
+        "· 帮助：查看功能菜单"
+    )
+
+
+async def welcome_message(user_id: str) -> str:
+    """为新增好友生成「欢迎语 + 功能清单」（LLM 生成欢迎语，失败用兜底）。"""
+    try:
+        msgs = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": "请给刚通过好友申请的「人」写一句简短、亲切的欢迎语，"
+                "说明这是校园广播站的歌曲点播小助手，可以直接分享歌曲来点歌。一两句话即可。",
+            },
+        ]
+        r = await _client.chat.completions.create(model=LLM_MODEL, messages=msgs)
+        welcome = (r.choices[0].message.content or "").strip()
+        if not welcome:
+            welcome = "人，你好呀！咪是校园广播站的点歌小助猫。"
+    except Exception:
+        logger.exception("LLM 生成欢迎语失败")
+        welcome = "人，你好呀！咪是校园广播站的点歌小助猫。"
+    return welcome + "\n\n" + _function_list()
 
 
 if CONFIGURED:
@@ -856,6 +886,26 @@ if CONFIGURED:
 
             history = _mem(uid)
             history.append({"role": "user", "content": text, "ts": time.time()})
+
+            # 分享搜索后的确认点歌
+            if uid in _pending_order:
+                t = text.strip()
+                if t.isdigit() or t in ("要", "好", "点", "可以", "同意", "嗯", "行", "OK", "ok", "Ok"):
+                    _pending_order.pop(uid, None)
+                    idx = int(t) if t.isdigit() else 1
+                    result = await _tool_order(uid, idx)
+                    if result.get("send") is not None and not isinstance(
+                        result["send"], str
+                    ):
+                        await bot.send(event, result["send"])
+                    reply = await _phrase_reply(text, result.get("summary", ""))
+                    if reply:
+                        await bot.send(event, reply)
+                        history.append(
+                            {"role": "assistant", "content": reply, "ts": time.time()}
+                        )
+                    return
+                _pending_order.pop(uid, None)
 
             intent = _detect_intent(text)
             reply = ""

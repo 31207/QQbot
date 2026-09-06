@@ -109,6 +109,13 @@ def _find_search_plugin():
     return None
 
 
+def _find_llm_plugin():
+    for plugin in get_loaded_plugins():
+        if plugin.name == "llm_assist" and plugin.module:
+            return plugin.module
+    return None
+
+
 def get_last_search(user_id: str) -> dict | None:
     """通过 NoneBot 插件管理器定位搜索插件实例（避免重复 import 导致状态不一致）。"""
     module = _find_search_plugin()
@@ -137,13 +144,21 @@ friend_add_matcher = on_notice(priority=1, block=True, rule=Rule(_is_friend_add)
 
 @friend_add_matcher.handle()
 async def _(bot: Bot, event: FriendAddNoticeEvent):
-    """新好友添加后，主动发送帮助菜单。"""
+    """新好友添加后：不再发帮助菜单，改为 LLM 欢迎词 + 功能清单。"""
     try:
-        await bot.call_api(
-            "send_private_msg", user_id=event.user_id, message=HELP_MENU
-        )
+        llm = _find_llm_plugin()
+        if llm is not None and hasattr(llm, "welcome_message"):
+            text = await llm.welcome_message(str(event.user_id))
+        else:
+            text = (
+                "人，你好呀！咪是校园广播站的点歌小助猫。\n\n"
+                "—— 你可以这样点歌 ——\n"
+                "· 最方便：直接分享一首歌给我，咪帮你搜出来，你确认后就能自动点歌\n"
+                "· 搜索 歌名 / 点歌 序号 / 我的歌单 / 剩余次数 / 帮助"
+            )
+        await bot.call_api("send_private_msg", user_id=event.user_id, message=text)
     except Exception:
-        logger.exception("发送新好友帮助菜单失败")
+        logger.exception("发送新好友欢迎词失败")
 
 
 @matcher.handle()

@@ -8,6 +8,8 @@ _POINT_RE = re.compile(r"^点歌(?:\s*(\d+))?$")
 _REMARK_RE = re.compile(r"^备注(?:\s*(\d+)(?:\s+([\s\S]*))?)?$")
 _BAN_RE = re.compile(r"^封禁\s*(\d+)$")
 _UNBAN_RE = re.compile(r"^解封\s*(\d+)$")
+_BAN_SONG_RE = re.compile(r"^(?:禁歌|禁唱)\s*(.+)$")
+_UNBAN_SONG_RE = re.compile(r"^(?:解禁歌|解禁唱|允许歌)\s*(.+)$")
 
 HELP_MENU = (
     "点歌机器人功能菜单，回复编号：\n"
@@ -80,6 +82,23 @@ def parse_ban_command(text: str) -> tuple[str, str] | None:
 def is_ban_list_command(text: str) -> bool:
     t = (text or "").lstrip("/").strip()
     return re.sub(r"\s+", "", t) in ("封禁列表", "解封列表")
+
+
+def parse_ban_song_command(text: str) -> tuple[str, str] | None:
+    """「禁歌/禁唱 X」→ ("ban", X)；「解禁歌/允许歌 X」→ ("unban", X)；其他 → None。"""
+    t = (text or "").lstrip("/").strip()
+    m = _BAN_SONG_RE.match(t)
+    if m:
+        return ("ban", m.group(1).strip())
+    m = _UNBAN_SONG_RE.match(t)
+    if m:
+        return ("unban", m.group(1).strip())
+    return None
+
+
+def is_reset_command(text: str) -> bool:
+    t = (text or "").lstrip("/").strip()
+    return re.sub(r"\s+", "", t) in ("重置点歌次数", "重置", "清空点歌次数")
 
 
 def format_records(records: list[dict]) -> str:

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any, Callable
 
@@ -57,6 +58,8 @@ else:
 
 # 多轮记忆：uid -> [{role, content, ts}]
 _memories: dict[str, list[dict]] = {}
+# 待点分享歌曲：uid -> {source, id, name, artist, cover, url, ts}
+_pending_share: dict[str, dict] = {}
 
 
 def _get_plugin(name: str):
@@ -64,6 +67,18 @@ def _get_plugin(name: str):
         if plugin.name == name and plugin.module:
             return plugin.module
     return None
+
+
+def _is_super(mod, uid: str) -> bool:
+    if hasattr(mod, "is_super_admin"):
+        return mod.is_super_admin(uid)
+    return uid in getattr(mod, "SUPERUSERS", set())
+
+
+def _is_admin(mod, uid: str) -> bool:
+    if hasattr(mod, "is_admin"):
+        return mod.is_admin(uid)
+    return _is_super(mod, uid)
 
 
 def _mem(user_id: str) -> list[dict]:
@@ -182,7 +197,7 @@ async def _tool_help(uid: str, **_: Any) -> dict:
 
 async def _tool_ban(uid: str, user_id: str, **_: Any) -> dict:
     mod = _get_plugin("qq_song")
-    if mod is None or uid not in mod.SUPERUSERS:
+    if mod is None or not _is_super(mod, uid):
         s = "无权限：仅超级管理员可封禁。"
         return {"send": s, "summary": s}
     mod.STORE.set_user_banned(user_id, True)
@@ -192,13 +207,94 @@ async def _tool_ban(uid: str, user_id: str, **_: Any) -> dict:
 
 async def _tool_unban(uid: str, user_id: str, **_: Any) -> dict:
     mod = _get_plugin("qq_song")
-    if mod is None or uid not in mod.SUPERUSERS:
+    if mod is None or not _is_super(mod, uid):
         s = "无权限：仅超级管理员可解封。"
         return {"send": s, "summary": s}
     if mod.STORE.set_user_banned(user_id, False):
         s = f"已解封用户 {user_id}"
     else:
         s = f"用户 {user_id} 不存在，无法解封"
+    return {"send": s, "summary": s}
+
+
+async def _tool_reset_quota(uid: str, **_: Any) -> dict:
+    mod = _get_plugin("qq_song")
+    if mod is None or not _is_admin(mod, uid):
+        s = "无权限：仅管理员可重置点歌次数。"
+        return {"send": s, "summary": s}
+    n = mod.STORE.reset_all_daily_counts()
+    s = f"已重置所有人的今日点歌次数（清零 {n} 条记录）"
+    return {"send": s, "summary": s}
+
+
+async def _tool_ban_song(uid: str, target: str, **_: Any) -> dict:
+    mod = _get_plugin("qq_song")
+    if mod is None or not _is_admin(mod, uid):
+        s = "无权限：仅管理员可禁播歌曲。"
+        return {"send": s, "summary": s}
+    if str(target).isdigit():
+        ok = mod.STORE.set_song_banned(int(target), True)
+        s = f"已禁播歌曲 #{target}" if ok else f"歌曲 #{target} 不存在，无法禁播"
+        return {"send": s, "summary": s}
+    n = mod.STORE.set_song_banned_by_name(str(target), True)
+    s = f"已禁播 {n} 首匹配《{target}》的歌曲"
+    return {"send": s, "summary": s}
+
+
+async def _tool_unban_song(uid: str, target: str, **_: Any) -> dict:
+    mod = _get_plugin("qq_song")
+    if mod is None or not _is_admin(mod, uid):
+        s = "无权限：仅管理员可解禁歌曲。"
+        return {"send": s, "summary": s}
+    if str(target).isdigit():
+        ok = mod.STORE.set_song_banned(int(target), False)
+        s = f"已解禁歌曲 #{target}" if ok else f"歌曲 #{target} 不存在，无法解禁"
+        return {"send": s, "summary": s}
+    n = mod.STORE.set_song_banned_by_name(str(target), False)
+    s = f"已解禁 {n} 首匹配《{target}》的歌曲"
+    return {"send": s, "summary": s}
+
+
+async def _tool_banned_list(uid: str, **_: Any) -> dict:
+    mod = _get_plugin("qq_song")
+    if mod is None or not _is_super(mod, uid):
+        s = "无权限：仅超级管理员可查看封禁列表。"
+        return {"send": s, "summary": s}
+    users = mod.STORE.list_banned_users()
+    if not users:
+        s = "当前没有被封禁的用户"
+    else:
+        s = "被封禁用户：" + "、".join(u["user_id"] for u in users)
+    return {"send": s, "summary": s}
+
+
+async def _tool_order_shared(uid: str, **_: Any) -> dict:
+    info = _pending_share.get(uid)
+    if not info or (time.time() - info.get("ts", 0) > LLM_MEMORY_TTL):
+        _pending_share.pop(uid, None)
+        s = "没有找到待点的分享歌曲，请重新分享一次。"
+        return {"send": s, "summary": s}
+    song_mod = _get_plugin("qq_song")
+    if song_mod is None:
+        s = "点歌功能暂不可用。"
+        return {"send": s, "summary": s}
+    row = song_mod.STORE.get_or_create_song(info)
+    name = info.get("name", "未知歌曲")
+    artist = info.get("artist", "未知歌手")
+    if row["is_banned"]:
+        s = f"《{name} - {artist}》已被屏蔽，无法点播。"
+        return {"send": s, "summary": s}
+    if song_mod.STORE.count_for_user_today(uid) >= song_mod.DAILY_LIMIT:
+        s = f"今日点歌次数已用完（{song_mod.DAILY_LIMIT} 首），明天再来吧。"
+        return {"send": s, "summary": s}
+    song_mod.STORE.ensure_user(uid)
+    first = song_mod.STORE.add_or_bump_request(uid, row["id"])
+    used = song_mod.STORE.count_for_user_today(uid)
+    _pending_share.pop(uid, None)
+    if first:
+        s = f"点歌成功：{name} - {artist}\n今日已点 {used}/{song_mod.DAILY_LIMIT} 首"
+    else:
+        s = f"《{name} - {artist}》已置顶你的歌单\n今日已点 {used}/{song_mod.DAILY_LIMIT} 首"
     return {"send": s, "summary": s}
 
 
@@ -211,6 +307,11 @@ TOOL_HANDLERS: dict[str, Callable] = {
     "help_menu": _tool_help,
     "ban_user": _tool_ban,
     "unban_user": _tool_unban,
+    "reset_quota": _tool_reset_quota,
+    "ban_song": _tool_ban_song,
+    "unban_song": _tool_unban_song,
+    "banned_list": _tool_banned_list,
+    "order_shared_song": _tool_order_shared,
 }
 
 TOOLS = [
@@ -315,6 +416,58 @@ TOOLS = [
                 },
                 "required": ["user_id"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reset_quota",
+            "description": "重置所有人的今日点歌次数（仅管理员）。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ban_song",
+            "description": "禁播某首歌（仅管理员），可按歌名或歌曲编号。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "歌名或歌曲编号"}
+                },
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "unban_song",
+            "description": "解禁某首歌（仅管理员），可按歌名或歌曲编号。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "歌名或歌曲编号"}
+                },
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "banned_list",
+            "description": "查看被封禁的用户列表（仅超级管理员）。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "order_shared_song",
+            "description": "把用户刚分享的歌曲直接加入点歌歌单（无需搜索）。",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
 ]
@@ -428,6 +581,29 @@ def _detect_intent(text: str):
     if compact == "退出搜索":
         return ("__paginate__", {"direction": "exit"})
 
+    # 管理员：重置
+    if song_mod.is_reset_command(t):
+        return ("reset_quota", {})
+    # 管理员：禁歌 / 解禁歌
+    bs = song_mod.parse_ban_song_command(t)
+    if bs is not None:
+        action, target = bs
+        return (
+            ("ban_song" if action == "ban" else "unban_song"),
+            {"target": target},
+        )
+    # 超级管理员：封禁 / 解封
+    ban = song_mod.parse_ban_command(t)
+    if ban is not None:
+        action, target = ban
+        return (
+            ("ban_user" if action == "ban" else "unban_user"),
+            {"user_id": target},
+        )
+    # 超级管理员：封禁列表
+    if song_mod.is_ban_list_command(t):
+        return ("banned_list", {})
+
     # 搜索
     sp = search_mod.parse_search_command(t)
     if sp is not None:
@@ -478,6 +654,184 @@ async def _phrase_reply(user_text: str, summary: str) -> str:
     return text or summary
 
 
+def _extract_songmid(text: str) -> str:
+    """从 QQ 音乐链接里提取 songmid（歌曲唯一 id）。"""
+    if not text:
+        return ""
+    m = re.search(r"[?&]songmid=([0-9A-Za-z]+)", text)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _extract_share(event: MessageEvent) -> dict | None:
+    """从消息段提取音乐分享信息；返回 {title, artist, url, source} 或 None。"""
+    for seg in event.message:
+        seg_type = seg.type
+        d = dict(seg.data or {})
+        if seg_type == "music":
+            return {
+                "title": (d.get("title") or "").strip(),
+                "artist": (d.get("content") or "").strip(),
+                "url": (d.get("url") or "").strip(),
+                "source": (d.get("type") or "").strip(),
+                "id": str(d.get("id") or ""),
+                "cover": (d.get("image") or "").strip(),
+                "detail": json.dumps(d, ensure_ascii=False)[:300],
+            }
+        if seg_type == "json":
+            raw = d.get("data")
+            payload = {}
+            if isinstance(raw, str):
+                try:
+                    payload = json.loads(raw)
+                except Exception:
+                    payload = {}
+            elif isinstance(raw, dict):
+                payload = raw
+            meta = payload.get("meta", {}) or {}
+            mm = meta.get("music", {}) if isinstance(meta, dict) else {}
+            is_music_share = (
+                payload.get("view") == "music"
+                or bool(mm)
+                or str(payload.get("desc", "")) in ("音乐",)
+                or ("[分享]" in str(payload.get("prompt", "")))
+            )
+            if not is_music_share:
+                continue
+            title = mm.get("title", "") if isinstance(mm, dict) else ""
+            artist = mm.get("desc", "") if isinstance(mm, dict) else ""
+            url = (
+                mm.get("music_url") or mm.get("jump_url") or ""
+                if isinstance(mm, dict)
+                else ""
+            )
+            if not title:
+                prompt = str(payload.get("prompt", "") or "")
+                title = prompt.replace("[分享]", "").strip()
+            url = (url or "").strip()
+            id_val = (mm.get("id") or "") if isinstance(mm, dict) else ""
+            if not id_val:
+                id_val = _extract_songmid(url)
+            cover = (mm.get("preview") or "") if isinstance(mm, dict) else ""
+            return {
+                "title": (title or "").strip(),
+                "artist": (artist or "").strip(),
+                "url": url,
+                "source": "qq",
+                "id": str(id_val or ""),
+                "cover": (cover or "").strip(),
+                "detail": json.dumps(
+                    {
+                        "prompt": payload.get("prompt", ""),
+                        "msg": payload.get("msg", ""),
+                        "meta": payload.get("meta", {}),
+                    },
+                    ensure_ascii=False,
+                    default=str,
+                )[:500],
+            }
+        if seg_type == "xml":
+            raw = d.get("data") if isinstance(d, dict) else ""
+            if raw and ("[分享]" in str(raw) or "music" in str(raw).lower()):
+                return {
+                    "title": "",
+                    "artist": "",
+                    "url": "",
+                    "source": "",
+                    "id": "",
+                    "cover": "",
+                    "detail": str(raw)[:200],
+                }
+    return None
+
+
+async def _llm_reply_once(user_text: str) -> str:
+    """一次 LLM 调用，按猫猫口吻回复（无工具）。"""
+    msgs = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_text},
+    ]
+    resp = await _client.chat.completions.create(model=LLM_MODEL, messages=msgs)
+    return (resp.choices[0].message.content or "").strip()
+
+
+async def _handle_share(
+    bot: Bot, event: MessageEvent, uid: str, text: str, share: dict
+) -> None:
+    """处理分享卡片：能解析交给 LLM 读懂回复；解析失败生成提醒文本。"""
+    history = _mem(uid)
+    if share.get("title"):
+        sid = share.get("id") or ""
+        user_content = (text or "给你分享了一首歌").strip()
+        user_content += (
+            f"\n\n（用户分享了一首音乐：歌名《{share['title']}》，歌手："
+            f"{share['artist'] or '未知'}，链接：{share['url'] or '未知'}，"
+            f"平台：{share.get('source') or '未知'}，歌曲ID：{sid or '未知'}）"
+        )
+        detail = share.get("detail") or ""
+        if detail:
+            user_content += f"\n（分享卡片原文：{detail}）"
+        if sid:
+            _pending_share[uid] = {
+                "source": share.get("source") or "qq",
+                "id": sid,
+                "name": share["title"],
+                "artist": share.get("artist", ""),
+                "cover": share.get("cover", ""),
+                "url": share.get("url", ""),
+                "ts": time.time(),
+            }
+            user_content += (
+                "\n这首歌可以直接用「order_shared_song」工具加入歌单，无需搜索。"
+                "\n请先用猫猫口吻询问用户是否要点这首歌；若用户同意，再调用 "
+                "order_shared_song 加入歌单。"
+            )
+        else:
+            user_content += "\n（未能获取到这首歌曲的ID，无法直接加入歌单，可提示用户搜索。）"
+        history.append(
+            {"role": "user", "content": user_content, "ts": time.time()}
+        )
+        try:
+            reply = await _llm_reply_once(user_content)
+        except Exception:
+            logger.exception("LLM 处理分享失败")
+            reply = "人，咪看到你分享的歌了，不过刚才走神了，你再说一次呀。"
+        if reply:
+            await bot.send(event, reply)
+            history.append(
+                {"role": "assistant", "content": reply, "ts": time.time()}
+            )
+    else:
+        reminder = (
+            "人，咪看到你发来的音乐卡片了，但没能认出是哪首歌。"
+            "你可以直接把「搜索 歌名」发给咪，或发「点歌 序号」哦。"
+        )
+        await bot.send(event, reminder)
+        history.append(
+            {"role": "user", "content": text or "[音乐卡片·解析失败]", "ts": time.time()}
+        )
+        history.append(
+            {"role": "assistant", "content": reminder, "ts": time.time()}
+        )
+
+
+async def _notify_error(bot: Bot, event: MessageEvent) -> None:
+    """未知错误发生时：记录日志并给用户一条提示文本（优先 LLM 口吻，失败则兜底）。"""
+    try:
+        text = await _llm_reply_once(
+            "（系统内部故障提示）请用你（咪）傲娇可爱的口吻，简短告诉用户："
+            "咪刚才遇到点小状况，请稍后再试一次。"
+        )
+        if text:
+            await bot.send(event, text)
+            return
+    except Exception:
+        logger.exception("生成错误提示失败")
+    fallback = "人，咪这边出了点小状况，你先稍等一下再试哦。"
+    await bot.send(event, fallback)
+
+
 if CONFIGURED:
     from nonebot import on_message
 
@@ -487,13 +841,20 @@ if CONFIGURED:
     async def _(bot: Bot, event: MessageEvent):
         uid = event.get_user_id()
         text = event.get_plaintext().strip()
-        if not text:
-            return
-
-        history = _mem(uid)
-        history.append({"role": "user", "content": text, "ts": time.time()})
 
         try:
+            # 音乐分享卡片：优先处理
+            share = _extract_share(event)
+            if share is not None:
+                await _handle_share(bot, event, uid, text, share)
+                return
+
+            if not text:
+                return
+
+            history = _mem(uid)
+            history.append({"role": "user", "content": text, "ts": time.time()})
+
             intent = _detect_intent(text)
             reply = ""
             if intent is not None:
@@ -523,7 +884,8 @@ if CONFIGURED:
                 reply = await _run_tools(bot, event, uid, messages)
         except Exception:
             logger.exception("LLM 助手处理消息失败")
-            reply = "人，咪这边有点懵，再说一次吧。"
+            await _notify_error(bot, event)
+            return
 
         if reply:
             await bot.send(event, reply)

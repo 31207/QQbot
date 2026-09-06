@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from nonebot import get_driver, get_loaded_plugins, logger, on_message, on_notice
@@ -27,8 +28,10 @@ from .song_core import (
     format_records,
     format_remaining,
     is_ban_list_command,
+    is_reset_command,
     match_command,
     parse_ban_command,
+    parse_ban_song_command,
     parse_remark_command,
     parse_request_command,
 )
@@ -52,6 +55,52 @@ STORE = SongRequestStore(_data_file)
 DAILY_LIMIT = int(_env("QQ_SONG_DAILY_LIMIT", "5") or "5")
 RECORD_LIMIT = int(_env("QQ_SONG_RECORD_LIMIT", "20") or "20")
 SUPERUSERS: set[str] = get_driver().config.superusers
+
+# ---------------- 权限白名单（三级：用户 / 管理员 / 超级管理员） ----------------
+# 权限只能从 data/permissions.json 添加，无法在机器人端获取。
+PERMISSIONS_FILE = Path(
+    _env("QQ_PERMISSIONS_FILE") or str(_PROJECT_ROOT / "data" / "permissions.json")
+)
+_permissions: dict = {"admins": [], "super_admins": []}
+_permissions_mtime: float = -1.0
+
+
+def _load_permissions() -> None:
+    global _permissions, _permissions_mtime
+    try:
+        mtime = (
+            PERMISSIONS_FILE.stat().st_mtime if PERMISSIONS_FILE.exists() else -1.0
+        )
+        if mtime == _permissions_mtime:
+            return
+        data = (
+            json.loads(PERMISSIONS_FILE.read_text(encoding="utf-8"))
+            if PERMISSIONS_FILE.exists()
+            else {}
+        )
+        _permissions = {
+            "admins": [str(x) for x in data.get("admins", [])],
+            "super_admins": [str(x) for x in data.get("super_admins", [])],
+        }
+        _permissions_mtime = mtime
+    except Exception:
+        logger.exception("读取权限白名单失败")
+        _permissions = {"admins": [], "super_admins": []}
+        _permissions_mtime = -1.0
+
+
+def is_admin(user_id: str) -> bool:
+    _load_permissions()
+    return (
+        user_id in _permissions["admins"]
+        or user_id in _permissions["super_admins"]
+    )
+
+
+def is_super_admin(user_id: str) -> bool:
+    _load_permissions()
+    return user_id in _permissions["super_admins"]
+
 
 def _find_search_plugin():
     for plugin in get_loaded_plugins():
@@ -106,7 +155,7 @@ async def _(bot: Bot, event: MessageEvent):
     admin = parse_ban_command(text)
     if admin is not None:
         action, target = admin
-        if uid not in SUPERUSERS:
+        if not is_super_admin(uid):
             await matcher.finish("无权限：仅超级管理员可执行封禁/解封")
         if STORE.set_user_banned(target, action == "ban"):
             word = "封禁" if action == "ban" else "解封"
@@ -114,7 +163,7 @@ async def _(bot: Bot, event: MessageEvent):
         await matcher.finish(f"用户 {target} 不存在，无法解封")
 
     if is_ban_list_command(text):
-        if uid not in SUPERUSERS:
+        if not is_super_admin(uid):
             await matcher.finish("无权限：仅超级管理员可查看封禁列表")
         users = STORE.list_banned_users()
         if not users:
@@ -127,6 +176,28 @@ async def _(bot: Bot, event: MessageEvent):
         await matcher.finish(
             "用法：「封禁 用户ID」/「解封 用户ID」，仅超级管理员可用"
         )
+
+    # 管理员：重置所有人今日点歌次数
+    if is_reset_command(text):
+        if not is_admin(uid):
+            await matcher.finish("无权限：仅管理员可重置点歌次数")
+        n = STORE.reset_all_daily_counts()
+        await matcher.finish(f"已重置所有人的今日点歌次数（清零 {n} 条记录）")
+
+    # 管理员：禁歌 / 解禁歌
+    bs = parse_ban_song_command(text)
+    if bs is not None:
+        action, target = bs
+        word = "禁播" if action == "ban" else "解禁"
+        if not is_admin(uid):
+            await matcher.finish(f"无权限：仅管理员可{word}歌曲")
+        if target.isdigit():
+            ok = STORE.set_song_banned(int(target), action == "ban")
+            if ok:
+                await matcher.finish(f"已{word}歌曲 #{target}")
+            await matcher.finish(f"歌曲 #{target} 不存在，无法{word}")
+        n = STORE.set_song_banned_by_name(target, action == "ban")
+        await matcher.finish(f"已{word} {n} 首匹配《{target}》的歌曲")
 
     # 封禁拦截：点歌插件全部功能拒绝
     if STORE.is_user_banned(uid):

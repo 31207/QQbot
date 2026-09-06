@@ -209,3 +209,40 @@ class SongRequestStore:
                 (user_id, today),
             ).fetchone()
         return int(row["n"]) if row else 0
+
+    def reset_all_daily_counts(self) -> int:
+        """把所有人“今天”的已点次数清零，返回清零的记录数。"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE user_requests SET day_count = 0 WHERE day = ?",
+                (today,),
+            )
+            return cur.rowcount
+
+    def set_song_banned(self, song_id: int, banned: bool) -> bool:
+        """按歌曲库 id 设置禁播状态；返回是否命中。"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE songs SET is_banned = ? WHERE id = ?",
+                (1 if banned else 0, song_id),
+            )
+            return cur.rowcount > 0
+
+    def find_songs_by_name(self, name: str) -> list[dict]:
+        """按歌名模糊查找歌曲（最多 20 条）。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM songs WHERE name LIKE ? LIMIT 20",
+                (f"%{name}%",),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_song_banned_by_name(self, name: str, banned: bool) -> int:
+        """按歌名模糊设置禁播状态，返回受影响条数。"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE songs SET is_banned = ? WHERE name LIKE ?",
+                (1 if banned else 0, f"%{name}%"),
+            )
+            return cur.rowcount

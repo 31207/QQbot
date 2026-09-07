@@ -48,6 +48,8 @@ LLM_MEMORY_TURNS = int(_env("LLM_MEMORY_TURNS", "12") or "12")
 LLM_MAX_STEPS = int(_env("LLM_MAX_STEPS", "4") or "4")
 
 CONFIGURED = bool(LLM_ENABLED and LLM_API_BASE and LLM_API_KEY and AsyncOpenAI)
+if LLM_ENABLED and AsyncOpenAI is None:
+    logger.exception("启用了LLM功能，但没有安装openai库，LLM功能将不可用")
 
 if CONFIGURED:
     _client = AsyncOpenAI(

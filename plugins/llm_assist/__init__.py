@@ -155,6 +155,20 @@ async def _tool_list(uid: str, **_: Any) -> dict:
         s = "歌单功能暂不可用。"
         return {"send": s, "summary": s}
     records = mod.STORE.list_for_user(uid, mod.RECORD_LIMIT)
+    if not records:
+        s = "你还没有点歌记录。先「搜索 歌名」搜索，再「点歌 序号」即可点歌。"
+        return {"send": s, "summary": s}
+    img = None
+    if hasattr(mod, "_render_records"):
+        try:
+            img = await mod._render_records(records)
+        except Exception:
+            logger.exception("渲染歌单图片失败")
+    if img is not None:
+        return {
+            "send": MessageSegment.image(img),
+            "summary": f"已生成「我的歌单」图片（共 {len(records)} 条点歌记录），图片已发送。",
+        }
     s = mod.format_records(records)
     return {"send": s, "summary": s}
 
@@ -910,11 +924,22 @@ if CONFIGURED:
                 if song_mod is not None:
                     if key == "3":
                         records = song_mod.STORE.list_for_user(uid, song_mod.RECORD_LIMIT)
+                        if not records:
+                            await bot.send(
+                                event,
+                                "你还没有点歌记录。先「搜索 歌名」搜索，再「点歌 序号」即可点歌。",
+                            )
+                            return
+                        img = (
+                            await song_mod._render_records(records)
+                            if hasattr(song_mod, "_render_records")
+                            else None
+                        )
                         await bot.send(
                             event,
-                            song_mod.format_records(records)
-                            if records
-                            else "你还没有点歌记录。先「搜索 歌名」搜索，再「点歌 序号」即可点歌。",
+                            MessageSegment.image(img)
+                            if img is not None
+                            else song_mod.format_records(records),
                         )
                         return
                     if key == "4":

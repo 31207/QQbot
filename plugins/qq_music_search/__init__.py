@@ -127,7 +127,7 @@ async def paginate(sender_id: str, direction: str):
     img = await _render_session(sess)
     if img is None:
         return "图片生成失败，请稍后重试"
-    return img
+    return MessageSegment.image(img)
 
 
 def exit_search(sender_id: str) -> str:

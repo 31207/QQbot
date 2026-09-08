@@ -42,7 +42,7 @@
   <g>
     <rect x="36" y="218" width="560" height="74" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
     <path d="M36 228 a10 10 0 0 1 10 -10 h540 a10 10 0 0 1 10 10 v20 h-560 z" fill="#8b5cf6"/>
-    <text x="52" y="243" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">管理命令（仅超级管理员 · SUPERUSERS）</text>
+    <text x="52" y="243" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">管理命令（仅超级管理员 · permissions.json）</text>
     <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
       <text x="52" y="259" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">封禁 用户ID / 解封 用户ID</text><text x="236" y="259" fill="#6b7280">封禁 / 解封用户（支持预封禁）</text>
       <text x="52" y="281" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">封禁列表</text><text x="236" y="281" fill="#6b7280">查看被封禁用户</text>

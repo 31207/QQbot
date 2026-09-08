@@ -1,4 +1,4 @@
-"""校园广播站点歌管理后台 —— FastAPI 接口（本地数据版）。
+"""校园广播站点歌管理后台 —— FastAPI 接口（数据版，SQLAlchemy 支持 SQLite / PostgreSQL）。
 
 运行：
     .\\.venv\\Scripts\\python.exe web-admin\\backend\\app.py
@@ -6,8 +6,9 @@
     http://127.0.0.1:8600
 
 说明：
-- 默认读本地 data/song_requests.db；可用环境变量 WEB_ADMIN_DB 指定库；
-  若默认库不存在则自动回退到 web-admin/sample_db/song_requests.db。
+- 数据由统一 db 层（db.py）从 DATABASE_URL 读取：未设置时本地 SQLite
+  data/song_requests.db；设置 PostgreSQL 连接串即切换到 PG。
+- 兼容旧环境变量 WEB_ADMIN_DB（指定 SQLite 文件路径），在未设 DATABASE_URL 时生效。
 - 鉴权：设置环境变量 WEB_ADMIN_TOKEN 后，管理接口需在请求头带
   `Authorization: Bearer <token>`；不设置则不鉴权（本地调试）。
 """
@@ -16,8 +17,7 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
-import time
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -25,18 +25,36 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # 项目根，供 import db
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # qq-bot/
-_DEFAULT_DB = _PROJECT_ROOT / "data" / "song_requests.db"
 _SAMPLE_DB = Path(__file__).resolve().parent.parent / "sample_db" / "song_requests.db"
 _FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 _PERMISSIONS_FILE = _PROJECT_ROOT / "data" / "permissions.json"
 
-_DB = Path(os.environ.get("WEB_ADMIN_DB") or _DEFAULT_DB)
-if not _DB.exists() and _SAMPLE_DB.exists():
-    _DB = _SAMPLE_DB
+# 兼容旧 WEB_ADMIN_DB：在未设 DATABASE_URL 时，用它指向本地 sqlite 文件。
+if not os.environ.get("DATABASE_URL"):
+    _legacy = Path(os.environ.get("WEB_ADMIN_DB") or (_PROJECT_ROOT / "data" / "song_requests.db"))
+    if not _legacy.exists() and _SAMPLE_DB.exists():
+        _legacy = _SAMPLE_DB
+    os.environ["DATABASE_URL"] = f"sqlite:///{_legacy.as_posix()}"
 
 ADMIN_TOKEN = os.environ.get("WEB_ADMIN_TOKEN", "")
+
+from db import (  # noqa: E402  (需先处理 DATABASE_URL)
+    PlayHistory,
+    SessionLocal,
+    Song,
+    User,
+    UserRequest,
+    init_db,
+)
+
+init_db()
+
 
 app = FastAPI(title="校园广播站点歌管理后台")
 app.add_middleware(
@@ -47,55 +65,8 @@ app.add_middleware(
 )
 
 
-def _conn() -> sqlite3.Connection:
-    con = sqlite3.connect(str(_DB), check_same_thread=False)
-    con.row_factory = sqlite3.Row
-    return con
-
-
-def _migrate() -> None:
-    con = _conn()
-    try:
-        con.execute("PRAGMA journal_mode=WAL;")
-        cols = [r["name"] for r in con.execute("PRAGMA table_info(songs)")]
-        if "selected" not in cols:
-            con.execute(
-                "ALTER TABLE songs ADD COLUMN selected INTEGER NOT NULL DEFAULT 0"
-            )
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS play_history (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                song_id    INTEGER NOT NULL REFERENCES songs(id),
-                user_id    TEXT DEFAULT '',
-                note       TEXT DEFAULT '',
-                played_at  TEXT DEFAULT '',
-                created_at TEXT DEFAULT ''
-            )
-            """
-        )
-        con.commit()
-    finally:
-        con.close()
-
-
-_migrate()
-
-
-def _exec_write(sql: str, params: tuple) -> None:
-    for attempt in range(6):
-        con = _conn()
-        try:
-            con.execute("PRAGMA journal_mode=WAL;")
-            con.execute(sql, params)
-            con.commit()
-            return
-        except sqlite3.OperationalError as exc:
-            if "locked" not in str(exc).lower() or attempt == 5:
-                raise
-            time.sleep(0.4 * (attempt + 1))
-        finally:
-            con.close()
+def _session() -> Session:
+    return SessionLocal()
 
 
 # ---------------------------------------------------------------- 鉴权 ------------------------------------------------
@@ -142,46 +113,64 @@ def get_pool(
     page = max(int(page), 1)
     size = min(max(int(size), 1), 200)
 
-    # 查询条件
-    where = "WHERE 1=1"
-    params: list = []
-    if name:
-        where += " AND s.name LIKE ?"
-        params.append(f"%{name}%")
-    if user:
-        where += " AND EXISTS (SELECT 1 FROM user_requests ur2 WHERE ur2.song_id=s.id AND ur2.user_id LIKE ?)"
-        params.append(f"%{user}%")
-    if status == "selected":
-        where += " AND s.selected = 1"
-    elif status == "banned":
-        where += " AND s.is_banned = 1"
-    elif status == "pending":
-        where += " AND s.selected = 0 AND s.is_banned = 0"
-
-    # 未指定状态时：待选用/禁播在前，已选用排到末尾（内部仍按最近点歌时间倒序）
-    order = "ORDER BY s.selected ASC, MAX(ur.time) DESC" if not status else "ORDER BY MAX(ur.time) DESC"
-
-    con = _conn()
-    try:
-        sql = (
-            "SELECT s.id, s.name, s.artist, s.is_banned, s.selected, "
-            "COUNT(ur.id) AS req_count, MAX(ur.time) AS last_time "
-            "FROM songs s JOIN user_requests ur ON ur.song_id = s.id "
-            + where
-            + " GROUP BY s.id "
-            + order
+    with _session() as s:
+        # 点歌池只看被点过的歌：songs 上存在至少一条 user_requests
+        sub_agg = (
+            select(
+                UserRequest.song_id,
+                func.count(UserRequest.id).label("req_count"),
+                func.max(UserRequest.time).label("last_time"),
+            )
+            .group_by(UserRequest.song_id)
+            .subquery()
         )
-        total = con.execute(
-            "SELECT COUNT(*) AS c FROM (" + sql + ")", params
-        ).fetchone()["c"]
-        offset = (page - 1) * size
-        rows = con.execute(sql + " LIMIT ? OFFSET ?", params + [size, offset]).fetchall()
+        stmt = (
+            select(
+                Song.id,
+                Song.name,
+                Song.artist,
+                Song.is_banned,
+                Song.selected,
+                sub_agg.c.req_count,
+                sub_agg.c.last_time,
+            )
+            .join(sub_agg, sub_agg.c.song_id == Song.id)
+        )
+        conds = []
+        if name:
+            conds.append(Song.name.like(f"%{name}%"))
+        if user:
+            conds.append(
+                Song.id.in_(
+                    select(UserRequest.song_id).where(UserRequest.user_id.like(f"%{user}%"))
+                )
+            )
+        if status == "selected":
+            conds.append(Song.selected.is_(True))
+        elif status == "banned":
+            conds.append(Song.is_banned.is_(True))
+        elif status == "pending":
+            conds.append(Song.selected.is_(False))
+            conds.append(Song.is_banned.is_(False))
+        if conds:
+            stmt = stmt.where(*conds)
+
+        total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        if not status:
+            # 默认：待选用/禁播在前，已选用排末尾；组内按最近点歌时间倒序
+            stmt = stmt.order_by(Song.selected.asc(), sub_agg.c.last_time.desc())
+        else:
+            stmt = stmt.order_by(sub_agg.c.last_time.desc())
+        stmt = stmt.limit(size).offset((page - 1) * size)
+
+        rows = s.execute(stmt).mappings().all()
         out = []
         for r in rows:
-            reqs = con.execute(
-                "SELECT DISTINCT user_id FROM user_requests WHERE song_id = ?",
-                (r["id"],),
-            ).fetchall()
+            requester_ids = s.execute(
+                select(UserRequest.user_id)
+                .where(UserRequest.song_id == r["id"])
+                .distinct()
+            ).scalars().all()
             out.append(
                 {
                     "id": r["id"],
@@ -191,29 +180,29 @@ def get_pool(
                     "selected": bool(r["selected"]),
                     "req_count": r["req_count"],
                     "last_time": r["last_time"],
-                    "requesters": [x["user_id"] for x in reqs],
+                    "requesters": list(requester_ids),
                 }
             )
         return {"data": out, "total": total, "page": page, "size": size}
-    finally:
-        con.close()
 
 
 @app.get("/api/songs/{sid}/requests", **_auth)
 def get_song_requests(sid: int):
-    con = _conn()
-    try:
-        rows = con.execute(
-            """
-            SELECT ur.user_id, ur.time, ur.remark, ur.day_count, s.name, s.artist
-            FROM user_requests ur JOIN songs s ON s.id = ur.song_id
-            WHERE ur.song_id = ? ORDER BY ur.time DESC
-            """,
-            (sid,),
-        ).fetchall()
+    with _session() as s:
+        rows = s.execute(
+            select(
+                UserRequest.user_id,
+                UserRequest.time,
+                UserRequest.remark,
+                UserRequest.day_count,
+                Song.name,
+                Song.artist,
+            )
+            .join(Song, Song.id == UserRequest.song_id)
+            .where(UserRequest.song_id == sid)
+            .order_by(UserRequest.time.desc())
+        ).mappings().all()
         return {"data": [dict(r) for r in rows]}
-    finally:
-        con.close()
 
 
 class SelectManyIn(BaseModel):
@@ -224,22 +213,23 @@ class SelectManyIn(BaseModel):
 @app.post("/api/songs/select_many", **_auth)
 def select_many(body: SelectManyIn):
     now = datetime.now().isoformat(timespec="seconds")
-    con = _conn()
-    try:
-        rows = con.execute(
-            f"SELECT id FROM songs WHERE id IN ({','.join('?' * len(body.ids))})",
-            body.ids,
-        ).fetchall()
-    finally:
-        con.close()
-    for row in rows:
-        _exec_write("UPDATE songs SET selected = 1 WHERE id = ?", (row["id"],))
-        _exec_write(
-            "INSERT INTO play_history (song_id, user_id, note, played_at, created_at) "
-            "VALUES (?, '', ?, ?, ?)",
-            (row["id"], body.note, now, now),
-        )
-    return {"ok": True, "count": len(rows)}
+    with _session() as s:
+        songs = s.execute(
+            select(Song).where(Song.id.in_(body.ids))
+        ).scalars().all()
+        for song in songs:
+            song.selected = True
+            s.add(
+                PlayHistory(
+                    song_id=song.id,
+                    user_id="",
+                    note=body.note,
+                    played_at=now,
+                    created_at=now,
+                )
+            )
+        s.commit()
+        return {"ok": True, "count": len(songs)}
 
 
 class SelectIn(BaseModel):
@@ -249,32 +239,42 @@ class SelectIn(BaseModel):
 
 @app.post("/api/songs/{sid}/select", **_auth)
 def select_song(sid: int, body: SelectIn):
-    con = _conn()
-    try:
-        row = con.execute("SELECT id FROM songs WHERE id = ?", (sid,)).fetchone()
-        if not row:
-            raise HTTPException(404, "歌曲不存在")
-    finally:
-        con.close()
     now = datetime.now().isoformat(timespec="seconds")
-    _exec_write("UPDATE songs SET selected = 1 WHERE id = ?", (sid,))
-    _exec_write(
-        "INSERT INTO play_history (song_id, user_id, note, played_at, created_at) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (sid, body.user_id, body.note, now, now),
-    )
-    return {"ok": True}
+    with _session() as s:
+        song = s.get(Song, sid)
+        if not song:
+            raise HTTPException(404, "歌曲不存在")
+        song.selected = True
+        s.add(
+            PlayHistory(
+                song_id=sid,
+                user_id=body.user_id,
+                note=body.note,
+                played_at=now,
+                created_at=now,
+            )
+        )
+        s.commit()
+        return {"ok": True}
 
 
 @app.post("/api/songs/{sid}/ban", **_auth)
 def ban_song(sid: int):
-    _exec_write("UPDATE songs SET is_banned = 1 WHERE id = ?", (sid,))
+    with _session() as s:
+        song = s.get(Song, sid)
+        if song:
+            song.is_banned = True
+            s.commit()
     return {"ok": True}
 
 
 @app.post("/api/songs/{sid}/unban", **_auth)
 def unban_song(sid: int):
-    _exec_write("UPDATE songs SET is_banned = 0 WHERE id = ?", (sid,))
+    with _session() as s:
+        song = s.get(Song, sid)
+        if song:
+            song.is_banned = False
+            s.commit()
     return {"ok": True}
 
 
@@ -284,42 +284,58 @@ def unban_song(sid: int):
 @app.get("/api/users", **_auth)
 def get_users():
     today = datetime.now().strftime("%Y-%m-%d")
-    con = _conn()
-    try:
-        rows = con.execute("SELECT user_id, is_banned, created_at FROM users").fetchall()
-        out = []
-        for r in rows:
-            today_count = con.execute(
-                "SELECT COALESCE(SUM(day_count),0) c FROM user_requests "
-                "WHERE user_id = ? AND day = ?",
-                (r["user_id"], today),
-            ).fetchone()["c"]
-            out.append(
+    with _session() as s:
+        rows = s.execute(
+            select(
+                User.user_id,
+                User.is_banned,
+                User.created_at,
+                func.coalesce(
+                    func.sum(UserRequest.day_count).filter(UserRequest.day == today), 0
+                ).label("today_count"),
+            )
+            .outerjoin(UserRequest, UserRequest.user_id == User.user_id)
+            .group_by(User.user_id, User.is_banned, User.created_at)
+            .order_by(User.user_id)
+        ).mappings().all()
+        return {
+            "data": [
                 {
                     "user_id": r["user_id"],
                     "is_banned": bool(r["is_banned"]),
                     "created_at": r["created_at"],
-                    "today_count": today_count,
+                    "today_count": int(r["today_count"] or 0),
                 }
-            )
-        return {"data": out}
-    finally:
-        con.close()
+                for r in rows
+            ]
+        }
 
 
 @app.post("/api/users/{uid}/ban", **_auth)
 def ban_user(uid: str):
-    _exec_write(
-        "INSERT INTO users (user_id, is_banned, created_at) VALUES (?, 1, ?) "
-        "ON CONFLICT(user_id) DO UPDATE SET is_banned = 1",
-        (uid, datetime.now().isoformat(timespec="seconds")),
-    )
+    with _session() as s:
+        user = s.get(User, uid)
+        if user:
+            user.is_banned = True
+        else:
+            s.add(
+                User(
+                    user_id=uid,
+                    is_banned=True,
+                    created_at=datetime.now().isoformat(timespec="seconds"),
+                )
+            )
+        s.commit()
     return {"ok": True}
 
 
 @app.post("/api/users/{uid}/unban", **_auth)
 def unban_user(uid: str):
-    _exec_write("UPDATE users SET is_banned = 0 WHERE user_id = ?", (uid,))
+    with _session() as s:
+        user = s.get(User, uid)
+        if user:
+            user.is_banned = False
+            s.commit()
     return {"ok": True}
 
 
@@ -330,29 +346,35 @@ def unban_user(uid: str):
 def get_history(name: str = "", date: str = "", page: int = 1, size: int = 20):
     page = max(int(page), 1)
     size = min(max(int(size), 1), 200)
-    con = _conn()
-    try:
-        sql = (
-            "SELECT ph.id, ph.song_id, s.name, s.artist, ph.user_id, "
-            "ph.note, ph.played_at "
-            "FROM play_history ph JOIN songs s ON s.id = ph.song_id WHERE 1=1"
+    with _session() as s:
+        stmt = (
+            select(
+                PlayHistory.id,
+                PlayHistory.song_id,
+                Song.name,
+                Song.artist,
+                PlayHistory.user_id,
+                PlayHistory.note,
+                PlayHistory.played_at,
+            )
+            .join(Song, Song.id == PlayHistory.song_id)
         )
-        params: list = []
+        conds = []
         if name:
-            sql += " AND s.name LIKE ?"
-            params.append(f"%{name}%")
+            conds.append(Song.name.like(f"%{name}%"))
         if date:
-            sql += " AND ph.played_at LIKE ?"
-            params.append(f"{date}%")
-        sql += " ORDER BY ph.played_at DESC"
-        total = con.execute(
-            "SELECT COUNT(*) AS c FROM (" + sql + ")", params
-        ).fetchone()["c"]
-        offset = (page - 1) * size
-        rows = con.execute(sql + " LIMIT ? OFFSET ?", params + [size, offset]).fetchall()
-        return {"data": [dict(r) for r in rows], "total": total, "page": page, "size": size}
-    finally:
-        con.close()
+            conds.append(PlayHistory.played_at.like(f"{date}%"))
+        if conds:
+            stmt = stmt.where(*conds)
+        total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        stmt = stmt.order_by(PlayHistory.played_at.desc()).limit(size).offset((page - 1) * size)
+        rows = s.execute(stmt).mappings().all()
+        return {
+            "data": [dict(r) for r in rows],
+            "total": total,
+            "page": page,
+            "size": size,
+        }
 
 
 def _reset_songs_by_history_ids(ids: list[int]) -> int:
@@ -363,35 +385,32 @@ def _reset_songs_by_history_ids(ids: list[int]) -> int:
     """
     if not ids:
         return 0
-    placeholders = ",".join("?" * len(ids))
-    con = _conn()
-    try:
-        rows = con.execute(
-            f"SELECT DISTINCT song_id FROM play_history WHERE id IN ({placeholders})",
-            ids,
-        ).fetchall()
-    finally:
-        con.close()
-    song_ids = list({r["song_id"] for r in rows})
-    # 事务性写入：删历史 + 重置选中状态
-    _exec_write(
-        f"DELETE FROM play_history WHERE id IN ({placeholders})",
-        tuple(ids),
-    )
-    if song_ids:
-        for sid in song_ids:
-            _exec_write("UPDATE songs SET selected = 0 WHERE id = ?", (sid,))
+    with _session() as s:
+        song_ids = list(
+            s.execute(
+                select(PlayHistory.song_id)
+                .where(PlayHistory.id.in_(ids))
+                .distinct()
+            ).scalars().all()
+        )
+        # 事务性写入：删历史 + 重置选中状态
+        s.execute(delete(PlayHistory).where(PlayHistory.id.in_(ids)))
+        if song_ids:
+            # 只把受影响歌曲的“已选用”标记重置为 False（回到待选用），不删除歌曲
+            s.execute(
+                Song.__table__.update()
+                .where(Song.id.in_(song_ids))
+                .values(selected=False)
+            )
+        s.commit()
     return len(song_ids)
 
 
 @app.delete("/api/history/{hid}", **_auth)
 def delete_history_one(hid: int):
-    con = _conn()
-    try:
-        row = con.execute("SELECT id FROM play_history WHERE id = ?", (hid,)).fetchone()
-    finally:
-        con.close()
-    if not row:
+    with _session() as s:
+        exists = s.get(PlayHistory, hid) is not None
+    if not exists:
         raise HTTPException(404, "播放历史不存在")
     n = _reset_songs_by_history_ids([hid])
     return {"ok": True, "reset_songs": n}
@@ -411,16 +430,20 @@ def delete_history_many(body: HistoryDeleteManyIn):
 
 @app.post("/api/history/delete_all", **_auth)
 def delete_history_all():
-    con = _conn()
-    try:
-        rows = con.execute("SELECT id, song_id FROM play_history").fetchall()
-    finally:
-        con.close()
-    song_ids = list({r["song_id"] for r in rows})
-    _exec_write("DELETE FROM play_history", ())
-    for sid in song_ids:
-        _exec_write("UPDATE songs SET selected = 0 WHERE id = ?", (sid,))
-    return {"ok": True, "count": len(rows), "reset_songs": len(song_ids)}
+    with _session() as s:
+        song_ids = list(
+            s.execute(select(PlayHistory.song_id).distinct()).scalars().all()
+        )
+        count = s.scalar(select(func.count()).select_from(PlayHistory)) or 0
+        s.execute(delete(PlayHistory))
+        if song_ids:
+            s.execute(
+                Song.__table__.update()
+                .where(Song.id.in_(song_ids))
+                .values(selected=False)
+            )
+        s.commit()
+        return {"ok": True, "count": count, "reset_songs": len(song_ids)}
 
 
 # ---------------------------------------------------------------- 统计 ------------------------------------------------
@@ -428,40 +451,37 @@ def delete_history_all():
 
 @app.get("/api/stats", **_auth)
 def get_stats():
-    con = _conn()
-    try:
-        total = con.execute("SELECT COUNT(*) c FROM user_requests").fetchone()["c"]
-        requests = con.execute(
-            "SELECT COUNT(DISTINCT song_id) c FROM user_requests"
-        ).fetchone()["c"]
-        selected = con.execute(
-            "SELECT COUNT(*) c FROM songs WHERE selected = 1"
-        ).fetchone()["c"]
-        banned = con.execute(
-            "SELECT COUNT(*) c FROM songs WHERE is_banned = 1"
-        ).fetchone()["c"]
-        pending = con.execute(
-            """
-            SELECT COUNT(*) c FROM songs s
-            WHERE s.selected = 0 AND s.is_banned = 0
-              AND EXISTS (SELECT 1 FROM user_requests ur WHERE ur.song_id = s.id)
-            """
-        ).fetchone()["c"]
+    with _session() as s:
+        total = s.scalar(select(func.count()).select_from(UserRequest)) or 0
+        requests = s.scalar(select(func.count(func.distinct(UserRequest.song_id)))) or 0
+        selected = s.scalar(select(func.count()).select_from(Song).where(Song.selected.is_(True))) or 0
+        banned = s.scalar(select(func.count()).select_from(Song).where(Song.is_banned.is_(True))) or 0
+        pending = s.scalar(
+            select(func.count())
+            .select_from(Song)
+            .where(Song.selected.is_(False))
+            .where(Song.is_banned.is_(False))
+            .where(
+                Song.id.in_(select(UserRequest.song_id).distinct())
+            )
+        ) or 0
         hot = [
             dict(r)
-            for r in con.execute(
-                """
-                SELECT s.name, s.artist, COUNT(ur.id) AS cnt
-                FROM user_requests ur JOIN songs s ON s.id = ur.song_id
-                GROUP BY s.id ORDER BY cnt DESC LIMIT 10
-                """
-            ).fetchall()
+            for r in s.execute(
+                select(Song.name, Song.artist, func.count(UserRequest.id).label("cnt"))
+                .join(UserRequest, UserRequest.song_id == Song.id)
+                .group_by(Song.id)
+                .order_by(func.count(UserRequest.id).desc())
+                .limit(10)
+            ).mappings().all()
         ]
         trend = [
-            dict(r)
-            for r in con.execute(
-                "SELECT day, COUNT(*) AS cnt FROM user_requests GROUP BY day ORDER BY day"
-            ).fetchall()
+            {"day": r[0], "cnt": r[1]}
+            for r in s.execute(
+                select(UserRequest.day, func.count())
+                .group_by(UserRequest.day)
+                .order_by(UserRequest.day)
+            ).all()
         ]
         return {
             "data": {
@@ -474,8 +494,6 @@ def get_stats():
                 "trend": trend,
             }
         }
-    finally:
-        con.close()
 
 
 # ---------------------------------------------------------------- 权限白名单 ------------------------------------------------

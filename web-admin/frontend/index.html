@@ -19,6 +19,10 @@
       box-shadow:0 0 0 6px rgba(79,70,229,.12); }
     h1 { font-size:22px; font-weight:700; letter-spacing:.5px; margin:0; }
     .sub { color:#6b7280; font-size:13px; margin-top:4px; }
+    .env-badge { display:inline-block; margin-left:8px; padding:2px 9px; border-radius:999px;
+      font-size:11px; font-weight:700; vertical-align:middle; }
+    .env-badge.test { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+    .env-badge.prod { background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }
     nav.tabs { display:flex; gap:6px; background:#fff; border:1px solid #e5e7eb; border-radius:14px;
       padding:6px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
     nav.tabs button { border:none; background:transparent; padding:8px 18px; border-radius:10px;
@@ -37,6 +41,7 @@
     .pill { padding:3px 10px; border-radius:999px; font-size:12px; }
     .el-table { --el-table-border-color:#f0f1f5; }
     .el-button--primary { --el-button-bg-color:var(--acc); --el-button-border-color:var(--acc); }
+    .pager { display:flex; justify-content:center; padding:14px 18px; border-top:1px solid #f3f4f6; }
     .bars { display:flex; align-items:flex-end; gap:10px; height:140px; padding:12px; }
     .bar { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
     .bar .i { width:100%; background:linear-gradient(180deg,var(--acc2),var(--acc)); border-radius:6px 6px 0 0;
@@ -49,7 +54,8 @@
   </style>
 </head>
 <body>
-<div id="app">
+<div id="app"></div>
+<script type="text/x-template" id="app-template">
   <!-- 登录门 -->
   <div v-if="needLogin" class="login-mask">
     <div class="login-box">
@@ -65,7 +71,12 @@
   <div v-else class="wrap">
     <header>
       <div class="logo"><span class="dot"></span>
-        <div><h1>校园广播站 · 点歌管理台</h1><div class="sub">点歌池 / 播放历史 / 用户 / 统计 / 权限白名单</div></div>
+        <div>
+          <h1>校园广播站 · 点歌管理台
+            <span :class="['env-badge', isTestEnv ? 'test' : 'prod']">{{ isTestEnv ? '测试环境' : '正式环境' }}</span>
+          </h1>
+          <div class="sub">点歌池 / 播放历史 / 用户 / 统计 / 权限白名单</div>
+        </div>
       </div>
       <nav class="tabs">
         <button :class="{on:tab==='pool'}" @click="go('pool')">点歌池</button>
@@ -82,12 +93,12 @@
         <div class="hd">
           <span>点歌池</span>
           <div class="filters">
-            <el-input v-model="poolFilter.name" placeholder="按歌名" clearable style="width:150px" @keyup.enter="loadPool" />
-            <el-input v-model="poolFilter.user" placeholder="按点歌人QQ" clearable style="width:150px" @keyup.enter="loadPool" />
-            <el-select v-model="poolFilter.status" placeholder="状态" clearable style="width:130px" @change="loadPool">
+            <el-input v-model="poolFilter.name" placeholder="按歌名" clearable style="width:150px" @keyup.enter="resetAndLoadPool"></el-input>
+            <el-input v-model="poolFilter.user" placeholder="按点歌人QQ" clearable style="width:150px" @keyup.enter="resetAndLoadPool" />
+            <el-select v-model="poolFilter.status" placeholder="状态" clearable style="width:130px" @change="resetAndLoadPool">
               <el-option label="待选用" value="pending" /><el-option label="已选用" value="selected" /><el-option label="已禁播" value="banned" />
             </el-select>
-            <el-button @click="loadPool">查询</el-button>
+            <el-button @click="resetAndLoadPool">查询</el-button>
             <el-button type="primary" :disabled="!poolSel.length" @click="batchSelect">选用选中({{ poolSel.length }})</el-button>
           </div>
         </div>
@@ -123,6 +134,17 @@
             </template>
           </el-table-column>
         </el-table>
+        <div class="pager">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next, jumper"
+            :total="poolTotal"
+            :page-size="poolSize"
+            :current-page="poolPage"
+            :page-sizes="[10, 20, 50, 100]"
+            @current-change="onPoolPageChange"
+            @size-change="onPoolSizeChange" />
+        </div>
       </div>
     </template>
 
@@ -133,17 +155,35 @@
           <span>播放历史</span>
           <div class="filters">
             <el-input v-model="histFilter.name" placeholder="按歌名" clearable style="width:150px" @keyup.enter="loadHistory" />
-            <el-date-picker v-model="histFilter.date" type="date" placeholder="按日期" value-format="YYYY-MM-DD" clearable style="width:160px" @change="loadHistory" />
+            <el-date-picker v-model="histFilter.date" type="date" placeholder="按日期" value-format="YYYY-MM-DD" clearable style="width:160px" @change="loadHistory"></el-date-picker>
             <el-button @click="loadHistory">查询</el-button>
+            <el-switch v-model="historyBatch" active-text="批量删除" @change="onHistoryBatchChange"></el-switch>
+            <el-button type="danger" plain :disabled="!historyBatch || !historySel.length" @click="deleteHistorySelected">删除选中({{ historySel.length }})</el-button>
+            <el-button type="danger" plain @click="deleteHistoryAll">清空全部</el-button>
           </div>
         </div>
-        <el-table :data="history" style="width:100%">
+        <el-table :data="history" row-key="id" @selection-change="onHistorySelChange" style="width:100%">
+          <el-table-column type="selection" width="46" :reserve-selection="true" :selectable="() => historyBatch" />
           <el-table-column label="播放时间" width="180"><template #default="{row}">{{ row.played_at }}</template></el-table-column>
           <el-table-column label="歌曲" min-width="180"><template #default="{row}">{{ row.name }}</template></el-table-column>
           <el-table-column label="歌手" width="140"><template #default="{row}">{{ row.artist }}</template></el-table-column>
           <el-table-column label="点歌人" width="140"><template #default="{row}">{{ row.user_id }}</template></el-table-column>
           <el-table-column label="备注"><template #default="{row}">{{ row.note }}</template></el-table-column>
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{row}"><el-button size="small" type="danger" plain @click="deleteHistoryOne(row)">删除</el-button></template>
+          </el-table-column>
         </el-table>
+        <div class="pager">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next, jumper"
+            :total="historyTotal"
+            :page-size="historySize"
+            :current-page="historyPage"
+            :page-sizes="[10, 20, 50, 100]"
+            @current-change="onHistoryPageChange"
+            @size-change="onHistorySizeChange" />
+        </div>
       </div>
     </template>
 
@@ -223,7 +263,7 @@
       </el-table>
     </el-dialog>
   </div>
-</div>
+</script>
 
 <script>
 const { createApp, ref, reactive, computed, onMounted } = Vue;
@@ -242,13 +282,20 @@ async function req(path, opts = {}) {
 }
 
 createApp({
+  template: '#app-template',
   setup() {
     const tab = ref('pool');
+    const isTestEnv = computed(() => String(window.location.port || '') === '8601');
     const loginInput = ref('');
     const loading = reactive({ pool:false, history:false, users:false, stats:false, perms:false });
     const pool = ref([]); const poolSel = ref([]);
     const poolFilter = reactive({ name:'', user:'', status:'' });
-    const history = ref([]); const histFilter = reactive({ name:'', date:'' });
+    const poolPage = ref(1);
+    const poolSize = ref(20);
+    const poolTotal = ref(0);
+    const history = ref([]); const historySel = ref([]); const historyBatch = ref(false);
+    const historyPage = ref(1); const historySize = ref(20); const historyTotal = ref(0);
+    const histFilter = reactive({ name:'', date:'' });
     const users = ref([]);
     const stats = ref({ total:0, requests:0, pending:0, selected:0, banned:0, hot:[], trend:[] });
     const perms = { admins:[], super_admins:[] };
@@ -262,10 +309,27 @@ createApp({
         if (poolFilter.name) q.set('name', poolFilter.name);
         if (poolFilter.user) q.set('user', poolFilter.user);
         if (poolFilter.status) q.set('status', poolFilter.status);
+        q.set('page', poolPage.value);
+        q.set('size', poolSize.value);
         const r = await req('/api/pool' + (q.toString() ? '?' + q.toString() : ''));
         pool.value = r.data || [];
+        poolTotal.value = r.total || 0;
+        poolSel.value = [];
       } catch (e) { ElMessage.error('加载点歌池失败：' + e.message); }
       finally { loading.pool = false; }
+    }
+    function onPoolPageChange(p) {
+      poolPage.value = p;
+      loadPool();
+    }
+    function onPoolSizeChange(s) {
+      poolSize.value = s;
+      poolPage.value = 1;
+      loadPool();
+    }
+    function resetAndLoadPool() {
+      poolPage.value = 1;
+      loadPool();
     }
     async function loadHistory() {
       loading.history = true;
@@ -273,10 +337,28 @@ createApp({
         const q = new URLSearchParams();
         if (histFilter.name) q.set('name', histFilter.name);
         if (histFilter.date) q.set('date', histFilter.date);
+        q.set('page', historyPage.value);
+        q.set('size', historySize.value);
         const r = await req('/api/history' + (q.toString() ? '?' + q.toString() : ''));
         history.value = r.data || [];
+        historyTotal.value = r.total || 0;
       } catch (e) { ElMessage.error('加载播放历史失败：' + e.message); }
       finally { loading.history = false; }
+    }
+    function onHistoryPageChange(p) {
+      historyPage.value = p;
+      loadHistory();
+    }
+    function onHistorySizeChange(s) {
+      historySize.value = s;
+      historyPage.value = 1;
+      loadHistory();
+    }
+    function onHistorySelChange(c) {
+      historySel.value = c || [];
+    }
+    function onHistoryBatchChange(v) {
+      if (!v) historySel.value = [];
     }
     async function loadUsers() {
       loading.users = true;
@@ -327,7 +409,57 @@ createApp({
       try {
         await req('/api/songs/' + row.id + '/select', { method:'POST', body: JSON.stringify({ user_id:(row.requesters||[])[0]||'', note:'' }) });
         ElMessage.success('已选用：' + row.name);
+        poolPage.value = 1;
+        historyPage.value = 1;
+        historySel.value = [];
         loadPool(); loadStats(); loadHistory();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    async function deleteHistoryOne(row) {
+      try {
+        await ElMessageBox.confirm(
+          '确认删除这条播放记录吗？\n删除后对应的歌曲将重置为「待选用」。',
+          '删除播放记录',
+          { type:'warning', confirmButtonText:'删除', cancelButtonText:'取消' }
+        );
+      } catch (e) { return; }
+      try {
+        await req('/api/history/' + row.id, { method:'DELETE' });
+        ElMessage.success('已删除该条记录');
+        loadHistory(); loadPool(); loadStats();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    async function deleteHistorySelected() {
+      const ids = historySel.value.map(r => r.id);
+      if (!ids.length) return;
+      try {
+        await ElMessageBox.confirm(
+          '确认删除选中的 ' + ids.length + ' 条播放记录吗？\n删除后对应的歌曲将重置为「待选用」。',
+          '批量删除播放记录',
+          { type:'warning', confirmButtonText:'删除', cancelButtonText:'取消' }
+        );
+      } catch (e) { return; }
+      try {
+        await req('/api/history/delete_many', { method:'POST', body: JSON.stringify({ ids }) });
+        ElMessage.success('已删除选中的 ' + ids.length + ' 条记录');
+        historySel.value = [];
+        loadHistory(); loadPool(); loadStats();
+      } catch (e) { ElMessage.error(e.message); }
+    }
+    async function deleteHistoryAll() {
+      try {
+        await ElMessageBox.confirm(
+          '确认删除全部播放记录吗？\n这是一项不可恢复的操作，删除后所有对应的歌曲将重置为「待选用」。',
+          '清空全部播放记录',
+          { type:'warning', confirmButtonText:'删除', cancelButtonText:'取消' }
+        );
+      } catch (e) { return; }
+      try {
+        await req('/api/history/delete_all', { method:'POST' });
+        ElMessage.success('已清空全部播放记录');
+        historySel.value = [];
+        historyPage.value = 1;
+        loadHistory(); loadPool(); loadStats();
       } catch (e) { ElMessage.error(e.message); }
     }
     async function batchSelect() {
@@ -338,6 +470,9 @@ createApp({
         try { const p = await ElMessageBox.prompt('可选备注（如第几期）', '批量选用 ' + ids.length + ' 首', { inputValue:'' }); note = p.value || ''; } catch (e) {}
         const r = await req('/api/songs/select_many', { method:'POST', body: JSON.stringify({ ids, note }) });
         ElMessage.success('已批量选用 ' + r.count + ' 首');
+        poolPage.value = 1;
+        historyPage.value = 1;
+        historySel.value = [];
         loadPool(); loadStats(); loadHistory(); poolSel.value = [];
       } catch (e) { ElMessage.error(e.message); }
     }
@@ -381,7 +516,7 @@ createApp({
 
     onMounted(() => { go('pool'); checkAuth(); });
 
-    return { tab, needLogin, loginInput, loading, pool, poolSel, poolFilter, history, histFilter, users, stats, permsText, detailVisible, detailSong, detailRows, go, loadPool, loadHistory, loadUsers, loadStats, loadPerms, doLogin, selectOne, batchSelect, banOne, toggleBan, openDetail, onSelChange, savePerms };
+    return { tab, isTestEnv, needLogin, loginInput, loading, pool, poolSel, poolFilter, poolPage, poolSize, poolTotal, history, historySel, historyBatch, historyPage, historySize, historyTotal, histFilter, users, stats, permsText, detailVisible, detailSong, detailRows, go, loadPool, loadHistory, loadUsers, loadStats, loadPerms, doLogin, selectOne, deleteHistoryOne, deleteHistorySelected, deleteHistoryAll, batchSelect, banOne, toggleBan, openDetail, onSelChange, savePerms, onPoolPageChange, onPoolSizeChange, resetAndLoadPool, onHistoryPageChange, onHistorySizeChange, onHistorySelChange, onHistoryBatchChange };
   }
 }).use(ElementPlus).mount('#app');
 </script>

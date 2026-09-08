@@ -132,32 +132,52 @@ def login(body: LoginIn):
 
 
 @app.get("/api/pool", **_auth)
-def get_pool(name: str = "", user: str = "", status: str = ""):
+def get_pool(
+    name: str = "",
+    user: str = "",
+    status: str = "",
+    page: int = 1,
+    size: int = 20,
+):
+    page = max(int(page), 1)
+    size = min(max(int(size), 1), 200)
+
+    # 查询条件
+    where = "WHERE 1=1"
+    params: list = []
+    if name:
+        where += " AND s.name LIKE ?"
+        params.append(f"%{name}%")
+    if user:
+        where += " AND EXISTS (SELECT 1 FROM user_requests ur2 WHERE ur2.song_id=s.id AND ur2.user_id LIKE ?)"
+        params.append(f"%{user}%")
+    if status == "selected":
+        where += " AND s.selected = 1"
+    elif status == "banned":
+        where += " AND s.is_banned = 1"
+    elif status == "pending":
+        where += " AND s.selected = 0 AND s.is_banned = 0"
+
+    # 未指定状态时：待选用/禁播在前，已选用排到末尾（内部仍按最近点歌时间倒序）
+    order = "ORDER BY s.selected ASC, MAX(ur.time) DESC" if not status else "ORDER BY MAX(ur.time) DESC"
+
     con = _conn()
     try:
         sql = (
             "SELECT s.id, s.name, s.artist, s.is_banned, s.selected, "
             "COUNT(ur.id) AS req_count, MAX(ur.time) AS last_time "
             "FROM songs s JOIN user_requests ur ON ur.song_id = s.id "
-            "WHERE 1=1"
+            + where
+            + " GROUP BY s.id "
+            + order
         )
-        params: list = []
-        if name:
-            sql += " AND s.name LIKE ?"
-            params.append(f"%{name}%")
-        if user:
-            sql += " AND EXISTS (SELECT 1 FROM user_requests ur2 WHERE ur2.song_id=s.id AND ur2.user_id LIKE ?)"
-            params.append(f"%{user}%")
-        sql += " GROUP BY s.id ORDER BY last_time DESC"
-        rows = con.execute(sql, params).fetchall()
+        total = con.execute(
+            "SELECT COUNT(*) AS c FROM (" + sql + ")", params
+        ).fetchone()["c"]
+        offset = (page - 1) * size
+        rows = con.execute(sql + " LIMIT ? OFFSET ?", params + [size, offset]).fetchall()
         out = []
         for r in rows:
-            if status == "selected" and not r["selected"]:
-                continue
-            if status == "banned" and not r["is_banned"]:
-                continue
-            if status == "pending" and (r["selected"] or r["is_banned"]):
-                continue
             reqs = con.execute(
                 "SELECT DISTINCT user_id FROM user_requests WHERE song_id = ?",
                 (r["id"],),
@@ -174,7 +194,7 @@ def get_pool(name: str = "", user: str = "", status: str = ""):
                     "requesters": [x["user_id"] for x in reqs],
                 }
             )
-        return {"data": out}
+        return {"data": out, "total": total, "page": page, "size": size}
     finally:
         con.close()
 
@@ -307,7 +327,9 @@ def unban_user(uid: str):
 
 
 @app.get("/api/history", **_auth)
-def get_history(name: str = "", date: str = ""):
+def get_history(name: str = "", date: str = "", page: int = 1, size: int = 20):
+    page = max(int(page), 1)
+    size = min(max(int(size), 1), 200)
     con = _conn()
     try:
         sql = (
@@ -323,10 +345,82 @@ def get_history(name: str = "", date: str = ""):
             sql += " AND ph.played_at LIKE ?"
             params.append(f"{date}%")
         sql += " ORDER BY ph.played_at DESC"
-        rows = con.execute(sql, params).fetchall()
-        return {"data": [dict(r) for r in rows]}
+        total = con.execute(
+            "SELECT COUNT(*) AS c FROM (" + sql + ")", params
+        ).fetchone()["c"]
+        offset = (page - 1) * size
+        rows = con.execute(sql + " LIMIT ? OFFSET ?", params + [size, offset]).fetchall()
+        return {"data": [dict(r) for r in rows], "total": total, "page": page, "size": size}
     finally:
         con.close()
+
+
+def _reset_songs_by_history_ids(ids: list[int]) -> int:
+    """删除指定播放历史后，把对应歌曲的 selected 重置为 0（回到待选用）。
+
+    先取受影响歌曲 id（去重），再清空这些歌曲的历史记录，最后重置选中状态。
+    返回被重置的歌曲数。
+    """
+    if not ids:
+        return 0
+    placeholders = ",".join("?" * len(ids))
+    con = _conn()
+    try:
+        rows = con.execute(
+            f"SELECT DISTINCT song_id FROM play_history WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+    finally:
+        con.close()
+    song_ids = list({r["song_id"] for r in rows})
+    # 事务性写入：删历史 + 重置选中状态
+    _exec_write(
+        f"DELETE FROM play_history WHERE id IN ({placeholders})",
+        tuple(ids),
+    )
+    if song_ids:
+        for sid in song_ids:
+            _exec_write("UPDATE songs SET selected = 0 WHERE id = ?", (sid,))
+    return len(song_ids)
+
+
+@app.delete("/api/history/{hid}", **_auth)
+def delete_history_one(hid: int):
+    con = _conn()
+    try:
+        row = con.execute("SELECT id FROM play_history WHERE id = ?", (hid,)).fetchone()
+    finally:
+        con.close()
+    if not row:
+        raise HTTPException(404, "播放历史不存在")
+    n = _reset_songs_by_history_ids([hid])
+    return {"ok": True, "reset_songs": n}
+
+
+class HistoryDeleteManyIn(BaseModel):
+    ids: list[int]
+
+
+@app.post("/api/history/delete_many", **_auth)
+def delete_history_many(body: HistoryDeleteManyIn):
+    if not body.ids:
+        return {"ok": True, "count": 0, "reset_songs": 0}
+    n = _reset_songs_by_history_ids(body.ids)
+    return {"ok": True, "count": len(body.ids), "reset_songs": n}
+
+
+@app.post("/api/history/delete_all", **_auth)
+def delete_history_all():
+    con = _conn()
+    try:
+        rows = con.execute("SELECT id, song_id FROM play_history").fetchall()
+    finally:
+        con.close()
+    song_ids = list({r["song_id"] for r in rows})
+    _exec_write("DELETE FROM play_history", ())
+    for sid in song_ids:
+        _exec_write("UPDATE songs SET selected = 0 WHERE id = ?", (sid,))
+    return {"ok": True, "count": len(rows), "reset_songs": len(song_ids)}
 
 
 # ---------------------------------------------------------------- 统计 ------------------------------------------------
@@ -424,4 +518,4 @@ app.mount("/", StaticFiles(directory=str(_FRONTEND), html=True), name="static")
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8600)
+    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("WEB_ADMIN_PORT", "8600")))

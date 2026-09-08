@@ -9,7 +9,6 @@ User=qqbot
 Group=qqbot
 WorkingDirectory=/opt/QQbot
 Environment=PYTHONUNBUFFERED=1
-EnvironmentFile=/opt/QQbot/.env
 ExecStart=/opt/QQbot/.venv/bin/python bot.py
 Restart=always
 RestartSec=5

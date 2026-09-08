@@ -97,6 +97,15 @@ sudo systemctl enable --now qqbot qqbot-web
 sudo systemctl status qqbot qqbot-web
 ```
 
+> 说明：
+> - `qqbot.service`（bot）**刻意不用 `EnvironmentFile`**，因为 systemd 会把
+>   `ONEBOT_WS_URLS=["ws://..."]` 里的引号剥掉、变成非法 JSON。bot 会在启动时
+>   自行读取工作目录下的 `.env`（NoneBot 默认加载），`bot.py` 也会把
+>   `DATABASE_URL` 注入环境变量，所以 bot 不需要额外的环境文件。
+> - `qqbot-web.service`（web）**保留 `EnvironmentFile`**，因为 FastAPI 的后端
+>   直接读 `os.environ` 里的 `DATABASE_URL`，需要由环境文件提供。
+>   web 进程里多余的 `ONEBOT_WS_URLS` 被剥引号也无影响，web 不读取它。
+
 ## 8. nginx 站点
 
 ```bash

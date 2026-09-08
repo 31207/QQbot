@@ -54,7 +54,6 @@ _data_file = _env("QQ_SONG_DATA_FILE") or str(
 STORE = SongRequestStore(_data_file)
 DAILY_LIMIT = int(_env("QQ_SONG_DAILY_LIMIT", "5") or "5")
 RECORD_LIMIT = int(_env("QQ_SONG_RECORD_LIMIT", "20") or "20")
-SUPERUSERS: set[str] = get_driver().config.superusers
 
 # ---------------- 权限白名单（三级：用户 / 管理员 / 超级管理员） ----------------
 # 权限只能从 data/permissions.json 添加，无法在机器人端获取。

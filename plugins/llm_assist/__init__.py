@@ -80,7 +80,7 @@ def _get_plugin(name: str):
 def _is_super(mod, uid: str) -> bool:
     if hasattr(mod, "is_super_admin"):
         return mod.is_super_admin(uid)
-    return uid in getattr(mod, "SUPERUSERS", set())
+    return False
 
 
 def _is_admin(mod, uid: str) -> bool:

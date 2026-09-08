@@ -76,6 +76,17 @@ $env:DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST:5432/DBNAME"
 
 启动 bot 照常 `nb run`，启动 web 照常 `python web-admin/backend/app.py`。二者现在共用同一个 PG 数据库，不再有 SQLite 单写者并发问题。
 
+### 用 `.env` 配置（bot）
+
+- NoneBot 的 `.env` 里写 `DATABASE_URL=postgresql+psycopg://...` 即可（`.env` 是 gitignore 的本地文件）。
+- 注意：NoneBot 不会把 `.env` 的键自动注入 `os.environ`；`bot.py` 已做了一层兜底，
+  在 `nonebot.init()` 后把 `config.database_url` 写进 `os.environ`。因此 bot 通过 `.env` 也能切到 PG。
+- 优先级：系统环境变量 `DATABASE_URL` > `.env` 里的 `DATABASE_URL`。
+
+### web 端
+
+- web（`web-admin/backend/app.py`）直接读系统环境变量 `DATABASE_URL`；若未设则按旧行为回退本地 SQLite。
+
 ## 兼容项说明
 
 - 旧环境变量 `WEB_ADMIN_DB` 仍兼容：在未设 `DATABASE_URL` 时，用它指定本地 SQLite 文件。

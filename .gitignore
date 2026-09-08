@@ -19,3 +19,6 @@ gopath/
 # 本地一键启动脚本（仅本机使用，不入库）
 start-all.bat
 web-admin/start.bat
+
+# 部署配置文件（仅本机/服务器使用，不入库）
+deploy/

@@ -48,6 +48,7 @@ from db import (  # noqa: E402  (需先处理 DATABASE_URL)
     PlayHistory,
     SessionLocal,
     Song,
+    SongSelectedNotice,
     User,
     UserRequest,
     init_db,
@@ -67,6 +68,37 @@ app.add_middleware(
 
 def _session() -> Session:
     return SessionLocal()
+
+
+def _record_selected_notice(sess: Session, song_id: int, name: str, artist: str) -> None:
+    """歌曲被选用后，写入一条待通知缓存（含该歌所有点歌用户，去重）。
+
+    只写缓存不发送：由 bot 端定时任务读取后逐用户私聊通知。
+    """
+    from sqlalchemy import select as _select
+
+    import json as _json
+
+    uids = list(
+        sess.execute(
+            _select(UserRequest.user_id)
+            .where(UserRequest.song_id == song_id)
+            .distinct()
+        ).scalars().all()
+    )
+    if not uids:
+        return
+    sess.add(
+        SongSelectedNotice(
+            song_id=song_id,
+            name=name,
+            artist=artist,
+            selected_at=datetime.now().isoformat(timespec="seconds"),
+            user_ids=_json.dumps(list(dict.fromkeys(uids)), ensure_ascii=False),
+            sent=False,
+            sent_at="",
+        )
+    )
 
 
 # ---------------------------------------------------------------- 鉴权 ------------------------------------------------
@@ -219,6 +251,7 @@ def select_many(body: SelectManyIn):
         ).scalars().all()
         for song in songs:
             song.selected = True
+            _record_selected_notice(s, song.id, song.name, song.artist)
             s.add(
                 PlayHistory(
                     song_id=song.id,
@@ -245,6 +278,7 @@ def select_song(sid: int, body: SelectIn):
         if not song:
             raise HTTPException(404, "歌曲不存在")
         song.selected = True
+        _record_selected_notice(s, song.id, song.name, song.artist)
         s.add(
             PlayHistory(
                 song_id=sid,

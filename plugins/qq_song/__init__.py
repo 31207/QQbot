@@ -11,9 +11,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 
-from nonebot import get_driver, get_loaded_plugins, logger, on_message, on_notice
+from nonebot import (
+    get_bots,
+    get_driver,
+    get_loaded_plugins,
+    logger,
+    on_message,
+    on_notice,
+)
 from nonebot.adapters.onebot.v11 import (
     Bot,
     FriendAddNoticeEvent,
@@ -377,3 +385,66 @@ async def _request_song(uid: str, index: int) -> None:
     await matcher.finish(
         f"《{name} - {artist}》已置顶你的歌单\n今日已点 {used}/{DAILY_LIMIT} 首"
     )
+
+
+# ---------------- 歌曲选中通知：缓存 → 定时扫描 → LLM 组合 → 私聊 ----------------
+
+_WEEK_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+NOTIFY_INTERVAL = max(int(_env("QQ_SONG_NOTIFY_INTERVAL", "60") or "60"), 10)
+
+
+def _format_date_cn(iso: str) -> str:
+    """把 'YYYY-MM-DDT..' 格式化成 'M月D日 星期X'；失败返回原字符串。"""
+    try:
+        dt = datetime.fromisoformat(iso)
+    except Exception:
+        return iso
+    return f"{dt.month}月{dt.day}日 {_WEEK_CN[dt.weekday()]}"
+
+
+async def _notify_selected_loop() -> None:
+    """后台循环：每隔 NOTIFY_INTERVAL 秒扫描一次未发送的选中通知。"""
+    while True:
+        try:
+            await _try_send_pending_notices()
+        except Exception:
+            logger.exception("发送歌曲选中通知失败")
+        await asyncio.sleep(NOTIFY_INTERVAL)
+
+
+async def _try_send_pending_notices() -> None:
+    bots = get_bots()
+    if not bots:
+        return  # 尚未有 bot 连接，等下一轮
+    # 取当前连接的 OneBot Bot（任一即可）
+    _bot = next(iter(bots.values()))
+    llm = _find_llm_plugin()
+    announce = getattr(llm, "announce_song_selected", None) if llm else None
+
+    for notice in STORE.list_pending_notices():
+        name = notice.get("name") or "未知歌曲"
+        artist = notice.get("artist") or "未知歌手"
+        date_cn = _format_date_cn(notice.get("selected_at") or "")
+        failed = False
+        for uid in notice.get("user_ids") or []:
+            if STORE.is_user_banned(str(uid)):
+                continue  # 跳过被封禁用户
+            try:
+                if announce is not None:
+                    text = await announce(name, artist, date_cn)
+                else:
+                    text = f"你点的《{name} - {artist}》在{date_cn}被选中了！记得去听哦～"
+                await _bot.call_api(
+                    "send_private_msg", user_id=uid, message=text
+                )
+            except TypeError:
+                # llm.announce_song_selected 可能为同步签名的兜底，不应发生；忽略
+                pass
+            except Exception:
+                logger.exception(f"通知用户 {uid} 失败")
+                failed = True
+        if not failed:
+            STORE.mark_notice_sent(notice["id"])
+
+
+driver.on_startup(_notify_selected_loop)

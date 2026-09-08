@@ -20,7 +20,6 @@ import os
 from pathlib import Path
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     ForeignKey,
     Index,
@@ -62,7 +61,7 @@ class Song(Base):
 
     __tablename__ = "songs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(String, nullable=False, default="")
     source_id: Mapped[str] = mapped_column(String, nullable=False, default="")
     name: Mapped[str] = mapped_column(String, nullable=False, default="")
@@ -95,9 +94,9 @@ class UserRequest(Base):
 
     __tablename__ = "user_requests"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
-    song_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("songs.id"), nullable=False)
+    song_id: Mapped[int] = mapped_column(Integer, ForeignKey("songs.id"), nullable=False)
     time: Mapped[str] = mapped_column(String, nullable=False, default="")
     remark: Mapped[str] = mapped_column(String, nullable=False, default="")
     day: Mapped[str] = mapped_column(String, nullable=False, default="")
@@ -115,12 +114,32 @@ class PlayHistory(Base):
 
     __tablename__ = "play_history"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    song_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("songs.id"), nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    song_id: Mapped[int] = mapped_column(Integer, ForeignKey("songs.id"), nullable=False)
     user_id: Mapped[str] = mapped_column(String, nullable=False, default="")
     note: Mapped[str] = mapped_column(String, nullable=False, default="")
     played_at: Mapped[str] = mapped_column(String, nullable=False, default="")
     created_at: Mapped[str] = mapped_column(String, nullable=False, default="")
+
+
+class SongSelectedNotice(Base):
+    """歌曲被选用后的待通知缓存。
+
+    web 后台选用一首歌时写入一条（含该歌所有点歌用户），bot 定时任务读取未发送
+    的记录，逐用户私聊通知后标记 sent=1。这样“被选用”与“发送”解耦：先缓存，后续
+    由定时任务批量发送。
+    """
+
+    __tablename__ = "song_selected_notice"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    song_id: Mapped[int] = mapped_column(Integer, ForeignKey("songs.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    artist: Mapped[str] = mapped_column(String, nullable=False, default="")
+    selected_at: Mapped[str] = mapped_column(String, nullable=False, default="")
+    user_ids: Mapped[str] = mapped_column(String, nullable=False, default="[]")
+    sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sent_at: Mapped[str] = mapped_column(String, nullable=False, default="")
 
 
 def init_db() -> None:

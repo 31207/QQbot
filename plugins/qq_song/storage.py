@@ -15,7 +15,7 @@ from sqlalchemy import func, select, update
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # 项目根，供 import db
 
-from db import SessionLocal, Song, User, UserRequest, init_db  # noqa: E402
+from db import SessionLocal, Song, User, UserRequest, SongSelectedNotice, init_db  # noqa: E402
 
 
 class SongRequestStore:
@@ -268,3 +268,79 @@ class SongRequestStore:
             )
             s.commit()
             return res.rowcount or 0
+
+    # ---------------- 歌曲选中通知缓存 ----------------
+
+    def list_song_requesters(self, song_id: int) -> list[str]:
+        """去重返回点过某首歌的所有用户 QQ 号（用于选中后通知）。"""
+        with self._session() as s:
+            rows = s.execute(
+                select(UserRequest.user_id)
+                .where(UserRequest.song_id == song_id)
+                .distinct()
+            ).scalars().all()
+            return list(rows)
+
+    def add_selected_notice(
+        self,
+        song_id: int,
+        name: str,
+        artist: str,
+        user_ids: list[str],
+    ) -> None:
+        """记录一条「歌曲被选用」的待通知缓存（不立即发送）。"""
+        if not user_ids:
+            return
+        import json as _json
+
+        selected_at = datetime.now().isoformat(timespec="seconds")
+        with self._session() as s:
+            s.add(
+                SongSelectedNotice(
+                    song_id=song_id,
+                    name=name,
+                    artist=artist,
+                    selected_at=selected_at,
+                    user_ids=_json.dumps(list(dict.fromkeys(user_ids)), ensure_ascii=False),
+                    sent=False,
+                    sent_at="",
+                )
+            )
+            s.commit()
+
+    def list_pending_notices(self) -> list[dict]:
+        """读取所有尚未发送的选中通知缓存记录。"""
+        import json as _json
+
+        with self._session() as s:
+            rows = s.execute(
+                select(SongSelectedNotice)
+                .where(SongSelectedNotice.sent.is_(False))
+                .order_by(SongSelectedNotice.id.asc())
+            ).scalars().all()
+            out = []
+            for r in rows:
+                try:
+                    uids = _json.loads(r.user_ids or "[]")
+                except Exception:
+                    uids = []
+                out.append(
+                    {
+                        "id": r.id,
+                        "song_id": r.song_id,
+                        "name": r.name,
+                        "artist": r.artist,
+                        "selected_at": r.selected_at,
+                        "user_ids": uids,
+                    }
+                )
+            return out
+
+    def mark_notice_sent(self, notice_id: int) -> None:
+        """把某条选中通知标记为已发送。"""
+        with self._session() as s:
+            row = s.get(SongSelectedNotice, notice_id)
+            if row:
+                row.sent = True
+                row.sent_at = datetime.now().isoformat(timespec="seconds")
+                s.commit()

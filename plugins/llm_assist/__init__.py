@@ -884,6 +884,35 @@ async def welcome_message(user_id: str) -> str:
     return welcome + "\n\n" + _function_list()
 
 
+async def announce_song_selected(name: str, artist: str, date_cn: str) -> str:
+    """为「歌曲被选用」生成一句给点歌用户的猫猫口吻通知。
+
+    name / artist：歌曲与歌手；date_cn：已格式化的日期，如「9月8日 星期二」。
+    LLM 可用时用猫猫口吻生成；失败或用 __client 不可用时用中文兜底。
+    """
+    fallback = f"你点的《{name} - {artist}》在{date_cn}被选中了！记得去听哦～"
+    try:
+        if _client is None:
+            return fallback
+        msgs = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"校园广播站的点歌歌曲《{name}》- {artist} 在{date_cn}被选中播放了。\n"
+                    "请用你（咪）傲娇可爱的口吻，替广播站通知这位「人」一句："
+                    "他点过的这首歌被选中了。一两句话即可，亲切一点，不要复述这些字段。"
+                ),
+            },
+        ]
+        r = await _client.chat.completions.create(model=LLM_MODEL, messages=msgs)
+        text = (r.choices[0].message.content or "").strip()
+        return text or fallback
+    except Exception:
+        logger.exception("LLM 生成选中通知失败")
+        return fallback
+
+
 if CONFIGURED:
     from nonebot import on_message
 

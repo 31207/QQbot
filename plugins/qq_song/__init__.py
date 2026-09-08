@@ -447,4 +447,9 @@ async def _try_send_pending_notices() -> None:
             STORE.mark_notice_sent(notice["id"])
 
 
-get_driver().on_startup(_notify_selected_loop)
+async def _start_notify_loop() -> None:
+    """启动钩子：在后台创建定时扫描任务后立即返回，避免阻塞 uvicorn 启动。"""
+    asyncio.create_task(_notify_selected_loop())
+
+
+get_driver().on_startup(_start_notify_loop)

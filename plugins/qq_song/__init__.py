@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from nonebot import (
@@ -60,7 +60,8 @@ _data_file = _env("QQ_SONG_DATA_FILE") or str(
     _PROJECT_ROOT / "data" / "song_requests.db"
 )
 STORE = SongRequestStore(_data_file)
-DAILY_LIMIT = int(_env("QQ_SONG_DAILY_LIMIT", "5") or "5")
+WEEK_LIMIT = int(_env("QQ_SONG_WEEK_LIMIT", "5") or "5")
+DAILY_LIMIT = WEEK_LIMIT  # 兼容旧命名（历史引用），实际已按周限
 RECORD_LIMIT = int(_env("QQ_SONG_RECORD_LIMIT", "20") or "20")
 
 # ---------------- 权限白名单（三级：用户 / 管理员 / 超级管理员） ----------------
@@ -199,12 +200,12 @@ async def _(bot: Bot, event: MessageEvent):
             "用法：「封禁 用户ID」/「解封 用户ID」，仅超级管理员可用"
         )
 
-    # 管理员：重置所有人今日点歌次数
+    # 管理员：重置所有人本周点歌次数
     if is_reset_command(text):
         if not is_admin(uid):
             await matcher.finish("无权限：仅管理员可重置点歌次数")
-        n = STORE.reset_all_daily_counts()
-        await matcher.finish(f"已重置所有人的今日点歌次数（清零 {n} 条记录）")
+        n = STORE.reset_all_weekly_counts()
+        await matcher.finish(f"已重置所有人的本周点歌次数（清零 {n} 条记录）")
 
     # 管理员：禁歌 / 解禁歌
     bs = parse_ban_song_command(text)
@@ -243,7 +244,7 @@ async def _(bot: Bot, event: MessageEvent):
             await matcher.finish(format_records(records))
         if key == "4":  # 剩余次数
             await matcher.finish(
-                format_remaining(STORE.count_for_user_today(uid), DAILY_LIMIT)
+                format_remaining(STORE.count_for_user_week(uid), WEEK_LIMIT)
             )
 
         detail = HELP_DETAILS.get(key)
@@ -316,7 +317,7 @@ async def _(bot: Bot, event: MessageEvent):
     # 查询剩余点歌次数
     if match_command(text, "查询剩余点歌次数", "剩余点歌次数", "剩余次数"):
         await matcher.finish(
-            format_remaining(STORE.count_for_user_today(uid), DAILY_LIMIT)
+            format_remaining(STORE.count_for_user_week(uid), WEEK_LIMIT)
         )
 
     # 点歌
@@ -374,23 +375,41 @@ async def _request_song(uid: str, index: int) -> None:
     if row["is_banned"]:
         await matcher.finish(f"《{name} - {artist}》已被屏蔽，无法点播")
 
-    if STORE.count_for_user_today(uid) >= DAILY_LIMIT:
-        await matcher.finish(f"今日点歌次数已用完（{DAILY_LIMIT} 首），明天再来吧")
+    if STORE.count_for_user_week(uid) >= WEEK_LIMIT:
+        await matcher.finish(f"本周点歌次数已用完（{WEEK_LIMIT} 首），下周再来吧")
 
     STORE.ensure_user(uid)
     first = STORE.add_or_bump_request(uid, row["id"])
-    used = STORE.count_for_user_today(uid)
+    used = STORE.count_for_user_week(uid)
     if first:
-        await matcher.finish(f"点歌成功：{name} - {artist}\n今日已点 {used}/{DAILY_LIMIT} 首")
+        await matcher.finish(f"点歌成功：{name} - {artist}\n本周已点 {used}/{WEEK_LIMIT} 首")
     await matcher.finish(
-        f"《{name} - {artist}》已置顶你的歌单\n今日已点 {used}/{DAILY_LIMIT} 首"
+        f"《{name} - {artist}》已置顶你的歌单\n本周已点 {used}/{WEEK_LIMIT} 首"
     )
 
 
 # ---------------- 歌曲选中通知：缓存 → 定时扫描 → LLM 组合 → 私聊 ----------------
 
 _WEEK_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-NOTIFY_INTERVAL = max(int(_env("QQ_SONG_NOTIFY_INTERVAL", "60") or "60"), 10)
+# 检测数据库频率：默认 24 小时 = 86400 秒
+NOTIFY_INTERVAL = max(int(_env("QQ_SONG_NOTIFY_INTERVAL", "86400") or "86400"), 60)
+# 每周发送选中通知的时点（默认周五 19:00）；NOTIFY_WEEKDAY: 0=周一 ... 4=周五
+NOTIFY_WEEKDAY = int(_env("QQ_SONG_NOTIFY_WEEKDAY", "4") or "4")
+NOTIFY_HOUR = int(_env("QQ_SONG_NOTIFY_HOUR", "19") or "19")
+NOTIFY_MINUTE = int(_env("QQ_SONG_NOTIFY_MINUTE", "0") or "0")
+
+_last_weekly_send_week: str | None = None
+
+
+def _seconds_until_next_weekly_send() -> float:
+    """距下一次发送时点（默认周五 19:00）的秒数，严格未来，最小 1 秒。"""
+    now = datetime.now()
+    target = now.replace(hour=NOTIFY_HOUR, minute=NOTIFY_MINUTE, second=0, microsecond=0)
+    days_ahead = (NOTIFY_WEEKDAY - now.weekday()) % 7
+    if days_ahead == 0 and now >= target:
+        days_ahead = 7  # 已是本周发送时点之后 → 等下一周
+    target += timedelta(days=days_ahead)
+    return max((target - now).total_seconds(), 1.0)
 
 
 def _format_date_cn(iso: str) -> str:
@@ -403,13 +422,24 @@ def _format_date_cn(iso: str) -> str:
 
 
 async def _notify_selected_loop() -> None:
-    """后台循环：每隔 NOTIFY_INTERVAL 秒扫描一次未发送的选中通知。"""
+    """后台循环：每 NOTIFY_INTERVAL 秒检测一次；到每周发送时点（默认周五19:00）批量发送未发送通知。"""
+    global _last_weekly_send_week
     while True:
-        try:
-            await _try_send_pending_notices()
-        except Exception:
-            logger.exception("发送歌曲选中通知失败")
-        await asyncio.sleep(NOTIFY_INTERVAL)
+        now = datetime.now()
+        week_key = f"{now.isocalendar().year}-W{now.isocalendar().week}"
+        in_window = (
+            now.weekday() == NOTIFY_WEEKDAY
+            and (now.hour > NOTIFY_HOUR or (now.hour == NOTIFY_HOUR and now.minute >= NOTIFY_MINUTE))
+        )
+        if in_window and _last_weekly_send_week != week_key:
+            try:
+                await _try_send_pending_notices()
+                _last_weekly_send_week = week_key
+            except Exception:
+                logger.exception("发送歌曲选中通知失败")
+        # 检测频率兜底：至少每 NOTIFY_INTERVAL 秒醒一次；临近发送时点则精确到点
+        delay = min(NOTIFY_INTERVAL, _seconds_until_next_weekly_send())
+        await asyncio.sleep(max(delay, 1.0))
 
 
 async def _try_send_pending_notices() -> None:

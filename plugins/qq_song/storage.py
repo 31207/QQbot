@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import func, select, update
@@ -137,6 +137,7 @@ class SongRequestStore:
         """
         now = datetime.now()
         today = now.strftime("%Y-%m-%d")
+        week = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
         ts = now.isoformat(timespec="seconds")
         with self._session() as s:
             row = s.execute(
@@ -153,6 +154,8 @@ class SongRequestStore:
                         time=ts,
                         day=today,
                         day_count=1,
+                        week=week,
+                        week_count=1,
                     )
                 )
                 s.commit()
@@ -160,6 +163,8 @@ class SongRequestStore:
             row.time = ts
             row.day = today
             row.day_count = row.day_count + 1 if row.day == today else 1
+            row.week = week
+            row.week_count = row.week_count + 1 if row.week == week else 1
             s.commit()
             return False
 
@@ -210,6 +215,20 @@ class SongRequestStore:
             )
             return int(value or 0)
 
+    def count_for_user_week(self, user_id: str, week: str | None = None) -> int:
+        """统计用户本周已点歌次数（按周计数 week_count 求和）。默认当前自然周（周一起）。"""
+        if week is None:
+            now = datetime.now()
+            week = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+        with self._session() as s:
+            value = s.scalar(
+                select(func.coalesce(func.sum(UserRequest.week_count), 0)).where(
+                    UserRequest.user_id == user_id,
+                    UserRequest.week == week,
+                )
+            )
+            return int(value or 0)
+
     def reset_all_daily_counts(self) -> int:
         """把所有人“今天”的已点次数清零，返回清零的记录数。"""
         today = datetime.now().strftime("%Y-%m-%d")
@@ -218,6 +237,19 @@ class SongRequestStore:
                 update(UserRequest)
                 .where(UserRequest.day == today)
                 .values(day_count=0)
+            )
+            s.commit()
+            return res.rowcount or 0
+
+    def reset_all_weekly_counts(self) -> int:
+        """把所有人“本周”的已点次数清零，返回清零的记录数。"""
+        now = datetime.now()
+        week = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+        with self._session() as s:
+            res = s.execute(
+                update(UserRequest)
+                .where(UserRequest.week == week)
+                .values(week_count=0)
             )
             s.commit()
             return res.rowcount or 0

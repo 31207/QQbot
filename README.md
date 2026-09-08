@@ -84,8 +84,12 @@ qq-bot/
 | `QQ_MUSIC_PAGE_SIZE` | 搜索每页条数 | `10` |
 | `QQ_MUSIC_SESSION_TTL` | 搜索会话有效期（秒） | `600` |
 | `QQ_SONG_DATA_FILE` | 点歌数据库文件 | `data/song_requests.db` |
-| `QQ_SONG_DAILY_LIMIT` | 每用户每日点歌上限 | `5` |
+| `QQ_SONG_WEEK_LIMIT` | 每用户每周点歌上限 | `5` |
 | `QQ_SONG_RECORD_LIMIT` | 歌单最多展示条数 | `20` |
+| `QQ_SONG_NOTIFY_INTERVAL` | 歌曲选中通知检测 DB 间隔（秒） | `86400` |
+| `QQ_SONG_NOTIFY_WEEKDAY` | 每周发送通知的星期（0=周一…4=周五） | `4` |
+| `QQ_SONG_NOTIFY_HOUR` | 每周发送通知的时 | `19` |
+| `QQ_SONG_NOTIFY_MINUTE` | 每周发送通知的分 | `0` |
 | `LLM_ENABLED` | 是否开启 LLM 智能助手（`true`/`false`） | `false` |
 | `LLM_API_BASE` | LLM 接口地址（OpenAI 兼容） | 空 |
 | `LLM_API_KEY` | LLM API Key | 空 |

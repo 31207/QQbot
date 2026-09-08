@@ -25,7 +25,7 @@ HELP_DETAILS = {
         "【点歌】\n"
         "先「搜索 歌名」得到结果，再「点歌 序号」点选；开启后可直接发数字序号选歌\n"
         "例：搜索 晴天 → 点歌 3\n"
-        "每日有上限；重复点歌会置顶歌单，当日次数照扣"
+        "每周有上限；重复点歌会置顶歌单，本周次数照扣"
     ),
     "2": (
         "【搜索歌曲】\n"
@@ -115,5 +115,5 @@ def format_records(records: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def format_remaining(used: int, limit: int) -> str:
-    return f"今天已点 {used}/{limit} 首，剩余可点 {max(0, limit - used)} 首。"
+def format_remaining(used: int, limit: int, period: str = "本周") -> str:
+    return f"{period}已点 {used}/{limit} 首，剩余可点 {max(0, limit - used)} 首。"

@@ -101,6 +101,8 @@ class UserRequest(Base):
     remark: Mapped[str] = mapped_column(String, nullable=False, default="")
     day: Mapped[str] = mapped_column(String, nullable=False, default="")
     day_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    week: Mapped[str] = mapped_column(String, nullable=False, default="")
+    week_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint("user_id", "song_id", name="uq_ur_user_song"),

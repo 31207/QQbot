@@ -447,4 +447,4 @@ async def _try_send_pending_notices() -> None:
             STORE.mark_notice_sent(notice["id"])
 
 
-driver.on_startup(_notify_selected_loop)
+get_driver().on_startup(_notify_selected_loop)

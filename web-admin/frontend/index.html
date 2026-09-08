@@ -117,8 +117,8 @@
           <el-table-column label="歌手" width="140">
             <template #default="{row}">{{ row.artist }}</template>
           </el-table-column>
-          <el-table-column label="点歌人" min-width="160">
-            <template #default="{row}"><span style="color:#6b7280">{{ (row.requesters||[]).join('、') || '—' }}</span></template>
+          <el-table-column label="点歌人/人数" min-width="160">
+            <template #default="{row}"><span style="color:#6b7280">{{ requestersText(row) }}</span></template>
           </el-table-column>
           <el-table-column label="次数" width="64">
             <template #default="{row}">{{ row.req_count }}</template>
@@ -498,6 +498,12 @@ createApp({
       catch (e) { ElMessage.error(e.message); detailRows.value = []; }
     }
     function onSelChange(c) { poolSel.value = c; }
+    function requestersText(row) {
+      const reqs = row.requesters || [];
+      if (!reqs.length) return '—';
+      if (reqs.length >= 5) return reqs.length + ' 人';
+      return reqs.join('、');
+    }
     async function savePerms() {
       const admins = permsText.admins.split('\n').map(s => s.trim()).filter(Boolean);
       const super_admins = permsText.super_admins.split('\n').map(s => s.trim()).filter(Boolean);
@@ -516,7 +522,7 @@ createApp({
 
     onMounted(() => { go('pool'); checkAuth(); });
 
-    return { tab, isTestEnv, needLogin, loginInput, loading, pool, poolSel, poolFilter, poolPage, poolSize, poolTotal, history, historySel, historyBatch, historyPage, historySize, historyTotal, histFilter, users, stats, permsText, detailVisible, detailSong, detailRows, go, loadPool, loadHistory, loadUsers, loadStats, loadPerms, doLogin, selectOne, deleteHistoryOne, deleteHistorySelected, deleteHistoryAll, batchSelect, banOne, toggleBan, openDetail, onSelChange, savePerms, onPoolPageChange, onPoolSizeChange, resetAndLoadPool, onHistoryPageChange, onHistorySizeChange, onHistorySelChange, onHistoryBatchChange };
+    return { tab, isTestEnv, needLogin, loginInput, loading, pool, poolSel, poolFilter, poolPage, poolSize, poolTotal, history, historySel, historyBatch, historyPage, historySize, historyTotal, histFilter, users, stats, permsText, detailVisible, detailSong, detailRows, go, loadPool, loadHistory, loadUsers, loadStats, loadPerms, doLogin, selectOne, deleteHistoryOne, deleteHistorySelected, deleteHistoryAll, batchSelect, banOne, toggleBan, openDetail, onSelChange, requestersText, savePerms, onPoolPageChange, onPoolSizeChange, resetAndLoadPool, onHistoryPageChange, onHistorySizeChange, onHistorySelChange, onHistoryBatchChange };
   }
 }).use(ElementPlus).mount('#app');
 </script>

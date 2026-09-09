@@ -85,6 +85,7 @@ qq-bot/
 | `QQ_MUSIC_SESSION_TTL` | 搜索会话有效期（秒） | `600` |
 | `QQ_SONG_DATA_FILE` | 点歌数据库文件 | `data/song_requests.db` |
 | `QQ_SONG_WEEK_LIMIT` | 每用户每周点歌上限 | `5` |
+| `QQ_SONG_ADMIN_DAILY_LIMIT` | 管理员及以上每日点歌上限 | `99` |
 | `QQ_SONG_RECORD_LIMIT` | 歌单最多展示条数 | `20` |
 | `QQ_SONG_NOTIFY_INTERVAL` | 歌曲选中通知检测 DB 间隔（秒） | `86400` |
 | `QQ_SONG_NOTIFY_WEEKDAY` | 每周发送通知的星期（0=周一…4=周五） | `4` |

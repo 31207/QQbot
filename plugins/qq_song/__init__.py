@@ -61,6 +61,7 @@ _data_file = _env("QQ_SONG_DATA_FILE") or str(
 )
 STORE = SongRequestStore(_data_file)
 WEEK_LIMIT = int(_env("QQ_SONG_WEEK_LIMIT", "5") or "5")
+ADMIN_DAILY_LIMIT = int(_env("QQ_SONG_ADMIN_DAILY_LIMIT", "99") or "99")
 DAILY_LIMIT = WEEK_LIMIT  # 兼容旧命名（历史引用），实际已按周限
 RECORD_LIMIT = int(_env("QQ_SONG_RECORD_LIMIT", "20") or "20")
 
@@ -108,6 +109,21 @@ def is_admin(user_id: str) -> bool:
 def is_super_admin(user_id: str) -> bool:
     _load_permissions()
     return user_id in _permissions["super_admins"]
+
+
+def role_limit(user_id: str) -> tuple[str, int]:
+    """返回 (period_label, limit)。管理员及以上：每日 ADMIN_DAILY_LIMIT（默认99）；
+    普通用户：每周 WEEK_LIMIT（默认5）。"""
+    if is_admin(user_id):
+        return ("今天", ADMIN_DAILY_LIMIT)
+    return ("本周", WEEK_LIMIT)
+
+
+def count_used(user_id: str, period: str) -> int:
+    """按周期返回已点次数：today=今天 / 其它=本周。"""
+    if period == "今天":
+        return STORE.count_for_user_today(user_id)
+    return STORE.count_for_user_week(user_id)
 
 
 def _find_search_plugin():
@@ -204,8 +220,8 @@ async def _(bot: Bot, event: MessageEvent):
     if is_reset_command(text):
         if not is_admin(uid):
             await matcher.finish("无权限：仅管理员可重置点歌次数")
-        n = STORE.reset_all_weekly_counts()
-        await matcher.finish(f"已重置所有人的本周点歌次数（清零 {n} 条记录）")
+        n = STORE.reset_all_weekly_counts() + STORE.reset_all_daily_counts()
+        await matcher.finish(f"已重置所有人的点歌次数（清零 {n} 条记录）")
 
     # 管理员：禁歌 / 解禁歌
     bs = parse_ban_song_command(text)
@@ -243,8 +259,9 @@ async def _(bot: Bot, event: MessageEvent):
                 await matcher.finish(MessageSegment.image(img))
             await matcher.finish(format_records(records))
         if key == "4":  # 剩余次数
+            _period, _limit = role_limit(uid)
             await matcher.finish(
-                format_remaining(STORE.count_for_user_week(uid), WEEK_LIMIT)
+                format_remaining(count_used(uid, _period), _limit, _period)
             )
 
         detail = HELP_DETAILS.get(key)
@@ -316,8 +333,9 @@ async def _(bot: Bot, event: MessageEvent):
 
     # 查询剩余点歌次数
     if match_command(text, "查询剩余点歌次数", "剩余点歌次数", "剩余次数"):
+        _period, _limit = role_limit(uid)
         await matcher.finish(
-            format_remaining(STORE.count_for_user_week(uid), WEEK_LIMIT)
+            format_remaining(count_used(uid, _period), _limit, _period)
         )
 
     # 点歌
@@ -375,16 +393,18 @@ async def _request_song(uid: str, index: int) -> None:
     if row["is_banned"]:
         await matcher.finish(f"《{name} - {artist}》已被屏蔽，无法点播")
 
-    if STORE.count_for_user_week(uid) >= WEEK_LIMIT:
-        await matcher.finish(f"本周点歌次数已用完（{WEEK_LIMIT} 首），下周再来吧")
+    _period, _limit = role_limit(uid)
+    if count_used(uid, _period) >= _limit:
+        _next = "明天再来吧" if _period == "今天" else "下周再来吧"
+        await matcher.finish(f"{_period}点歌次数已用完（{_limit} 首），{_next}")
 
     STORE.ensure_user(uid)
     first = STORE.add_or_bump_request(uid, row["id"])
-    used = STORE.count_for_user_week(uid)
+    used = count_used(uid, _period)
     if first:
-        await matcher.finish(f"点歌成功：{name} - {artist}\n本周已点 {used}/{WEEK_LIMIT} 首")
+        await matcher.finish(f"点歌成功：{name} - {artist}\n{_period}已点 {used}/{_limit} 首")
     await matcher.finish(
-        f"《{name} - {artist}》已置顶你的歌单\n本周已点 {used}/{WEEK_LIMIT} 首"
+        f"《{name} - {artist}》已置顶你的歌单\n{_period}已点 {used}/{_limit} 首"
     )
 
 

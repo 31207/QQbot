@@ -136,16 +136,18 @@ async def _tool_order(uid: str, index: int) -> dict:
     if row["is_banned"]:
         s = f"《{name} - {artist}》已被屏蔽，无法点播。"
         return {"send": s, "summary": s}
-    if song_mod.STORE.count_for_user_week(uid) >= song_mod.WEEK_LIMIT:
-        s = f"本周点歌次数已用完（{song_mod.WEEK_LIMIT} 首），下周再来吧。"
+    _period, _limit = song_mod.role_limit(uid)
+    if song_mod.count_used(uid, _period) >= _limit:
+        _next = "明天再来吧。" if _period == "今天" else "下周再来吧。"
+        s = f"{_period}点歌次数已用完（{_limit} 首），{_next}"
         return {"send": s, "summary": s}
     song_mod.STORE.ensure_user(uid)
     first = song_mod.STORE.add_or_bump_request(uid, row["id"])
-    used = song_mod.STORE.count_for_user_week(uid)
+    used = song_mod.count_used(uid, _period)
     if first:
-        s = f"点歌成功：{name} - {artist}\n本周已点 {used}/{song_mod.WEEK_LIMIT} 首"
+        s = f"点歌成功：{name} - {artist}\n{_period}已点 {used}/{_limit} 首"
     else:
-        s = f"《{name} - {artist}》已置顶你的歌单\n本周已点 {used}/{song_mod.WEEK_LIMIT} 首"
+        s = f"《{name} - {artist}》已置顶你的歌单\n{_period}已点 {used}/{_limit} 首"
     return {"send": s, "summary": s}
 
 
@@ -178,9 +180,8 @@ async def _tool_remaining(uid: str, **_: Any) -> dict:
     if mod is None:
         s = "该功能暂不可用。"
         return {"send": s, "summary": s}
-    s = mod.format_remaining(
-        mod.STORE.count_for_user_week(uid), mod.WEEK_LIMIT
-    )
+    _period, _limit = mod.role_limit(uid)
+    s = mod.format_remaining(mod.count_used(uid, _period), _limit, _period)
     return {"send": s, "summary": s}
 
 
@@ -244,8 +245,8 @@ async def _tool_reset_quota(uid: str, **_: Any) -> dict:
     if mod is None or not _is_admin(mod, uid):
         s = "无权限：仅管理员可重置点歌次数。"
         return {"send": s, "summary": s}
-    n = mod.STORE.reset_all_weekly_counts()
-    s = f"已重置所有人的本周点歌次数（清零 {n} 条记录）"
+    n = mod.STORE.reset_all_weekly_counts() + mod.STORE.reset_all_daily_counts()
+    s = f"已重置所有人的点歌次数（清零 {n} 条记录）"
     return {"send": s, "summary": s}
 
 
@@ -306,17 +307,19 @@ async def _tool_order_shared(uid: str, **_: Any) -> dict:
     if row["is_banned"]:
         s = f"《{name} - {artist}》已被屏蔽，无法点播。"
         return {"send": s, "summary": s}
-    if song_mod.STORE.count_for_user_week(uid) >= song_mod.WEEK_LIMIT:
-        s = f"本周点歌次数已用完（{song_mod.WEEK_LIMIT} 首），下周再来吧。"
+    _period, _limit = song_mod.role_limit(uid)
+    if song_mod.count_used(uid, _period) >= _limit:
+        _next = "明天再来吧。" if _period == "今天" else "下周再来吧。"
+        s = f"{_period}点歌次数已用完（{_limit} 首），{_next}"
         return {"send": s, "summary": s}
     song_mod.STORE.ensure_user(uid)
     first = song_mod.STORE.add_or_bump_request(uid, row["id"])
-    used = song_mod.STORE.count_for_user_week(uid)
+    used = song_mod.count_used(uid, _period)
     _pending_share.pop(uid, None)
     if first:
-        s = f"点歌成功：{name} - {artist}\n本周已点 {used}/{song_mod.WEEK_LIMIT} 首"
+        s = f"点歌成功：{name} - {artist}\n{_period}已点 {used}/{_limit} 首"
     else:
-        s = f"《{name} - {artist}》已置顶你的歌单\n本周已点 {used}/{song_mod.WEEK_LIMIT} 首"
+        s = f"《{name} - {artist}》已置顶你的歌单\n{_period}已点 {used}/{_limit} 首"
     return {"send": s, "summary": s}
 
 
@@ -385,7 +388,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "remaining_quota",
-            "description": "查询本周剩余点歌次数。",
+            "description": "查询点歌剩余次数。",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -444,7 +447,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "reset_quota",
-            "description": "重置所有人的本周点歌次数（仅管理员）。",
+            "description": "重置所有人的点歌次数（仅管理员）。",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -972,11 +975,13 @@ if CONFIGURED:
                         )
                         return
                     if key == "4":
+                        _p, _lim = song_mod.role_limit(uid)
                         await bot.send(
                             event,
                             song_mod.format_remaining(
-                                song_mod.STORE.count_for_user_week(uid),
-                                song_mod.WEEK_LIMIT,
+                                song_mod.count_used(uid, _p),
+                                _lim,
+                                _p,
                             ),
                         )
                         return

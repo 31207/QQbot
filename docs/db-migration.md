@@ -27,7 +27,7 @@
 ```powershell
 D:\pg-local\pgsql\bin\initdb.exe -D D:\pg-local\data -U postgres -E UTF8 --locale=C -A trust
 # 创建测试库与账号（示例）
-D:\pg-local\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U postgres -d postgres -c "CREATE ROLE qqbot LOGIN PASSWORD 'qqbot_pw';"
+D:\pg-local\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U postgres -d postgres -c "CREATE ROLE qqbot LOGIN PASSWORD '<你的密码>';"
 D:\pg-local\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U postgres -d postgres -c "CREATE DATABASE qqbot_test OWNER qqbot;"
 ```
 
@@ -40,7 +40,7 @@ D:\pg-local\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U postgres -d postgres -c "
 然后运行迁移脚本（读取 SQLite、只写 PG、可重复执行）：
 
 ```powershell
-$env:DATABASE_URL = "postgresql+psycopg://qqbot:qqbot_pw@127.0.0.1:5433/qqbot_test"
+$env:DATABASE_URL = "postgresql+psycopg://qqbot:<你的密码>@127.0.0.1:5433/qqbot_test"
 python web-admin/scripts/migrate_to_pg.py
 ```
 

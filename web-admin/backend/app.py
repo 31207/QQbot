@@ -9,12 +9,15 @@
 - 数据由统一 db 层（db.py）从 DATABASE_URL 读取：未设置时本地 SQLite
   data/song_requests.db；设置 PostgreSQL 连接串即切换到 PG。
 - 兼容旧环境变量 WEB_ADMIN_DB（指定 SQLite 文件路径），在未设 DATABASE_URL 时生效。
-- 鉴权：设置环境变量 WEB_ADMIN_TOKEN 后，管理接口需在请求头带
-  `Authorization: Bearer <token>`；不设置则不鉴权（本地调试）。
+- 鉴权：设置环境变量 WEB_ADMIN_USERNAME / WEB_ADMIN_PASSWORD 后，管理接口需先
+  `POST /api/login`（账号+密码）拿 token，再带 `Authorization: Bearer <token>`。
+  两者都不设置则不鉴权（本地调试）。旧 `WEB_ADMIN_TOKEN` 仍兼容（作 token 登录）。
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -42,6 +45,8 @@ if not os.environ.get("DATABASE_URL"):
         _legacy = _SAMPLE_DB
     os.environ["DATABASE_URL"] = f"sqlite:///{_legacy.as_posix()}"
 
+ADMIN_USERNAME = os.environ.get("WEB_ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("WEB_ADMIN_PASSWORD", "")
 ADMIN_TOKEN = os.environ.get("WEB_ADMIN_TOKEN", "")
 
 from db import (  # noqa: E402  (需先处理 DATABASE_URL)
@@ -105,9 +110,10 @@ def _record_selected_notice(sess: Session, song_id: int, name: str, artist: str)
 
 
 def require_auth(authorization: str = Header(default="")) -> None:
-    if not ADMIN_TOKEN:
+    if not ADMIN_PASSWORD and not ADMIN_TOKEN:
         return
-    if authorization != f"Bearer {ADMIN_TOKEN}":
+    expect = f"Bearer {_session_token()}" if ADMIN_PASSWORD else f"Bearer {ADMIN_TOKEN}"
+    if authorization != expect:
         raise HTTPException(401, "未授权")
 
 
@@ -119,14 +125,29 @@ _auth = {"dependencies": [AuthDep]}
 
 
 class LoginIn(BaseModel):
-    token: str
+    username: str
+    password: str
+
+
+def _session_token() -> str:
+    """由账号+密码生成稳定会话 token（无状态，改密码即失效）。"""
+    if not ADMIN_PASSWORD:
+        return ""
+    key = (ADMIN_PASSWORD or "").encode()
+    msg = (ADMIN_USERNAME or "admin").encode()
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
 
 @app.post("/api/login")
 def login(body: LoginIn):
-    if not ADMIN_TOKEN:
+    if not ADMIN_PASSWORD and not ADMIN_TOKEN:
         return {"ok": True, "token": ""}
-    if body.token == ADMIN_TOKEN:
+    if ADMIN_PASSWORD:
+        if body.username == ADMIN_USERNAME and body.password == ADMIN_PASSWORD:
+            return {"ok": True, "token": _session_token()}
+        raise HTTPException(401, "账号或密码错误")
+    # 旧 token 登录兜底
+    if body.password == ADMIN_TOKEN:
         return {"ok": True, "token": ADMIN_TOKEN}
     raise HTTPException(401, "token 错误")
 

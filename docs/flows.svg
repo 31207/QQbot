@@ -17,7 +17,7 @@
   <g>
     <rect x="36" y="96" width="560" height="118" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
     <path d="M36 106 a10 10 0 0 1 10 -10 h540 a10 10 0 0 1 10 10 v26 h-560 z" fill="#3b82f6"/>
-    <text x="52" y="125" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">音乐搜索插件（qq_music_search）</text>
+    <text x="52" y="125" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">搜索动作（action_search）</text>
     <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
       <text x="52" y="152" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">搜索 [平台] 歌名</text><text x="236" y="152" fill="#6b7280">全平台 / 指定平台搜索 → 结果图片（每页 10 条）</text>
       <text x="52" y="180" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">上一页 / 下一页</text><text x="236" y="180" fill="#6b7280">翻页查看搜索结果</text>
@@ -28,7 +28,7 @@
   <g>
     <rect x="624" y="96" width="580" height="174" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
     <path d="M624 106 a10 10 0 0 1 10 -10 h560 a10 10 0 0 1 10 10 v26 h-580 z" fill="#10b981"/>
-    <text x="640" y="125" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">点歌插件（qq_song）</text>
+    <text x="640" y="125" font-size="14" font-weight="700" fill="#ffffff" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">点歌动作（action_order）</text>
     <g font-size="13" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
       <text x="640" y="152" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">点歌 序号</text><text x="864" y="152" fill="#6b7280">点选最近搜索结果第 N 首</text>
       <text x="640" y="180" font-weight="700" fill="#111827" font-family="ui-monospace,Consolas,monospace">我的歌单 / 歌单</text><text x="864" y="180" fill="#6b7280">点歌记录图片（封面 · 编号 · 备注）</text>

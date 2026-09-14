@@ -1,17 +1,21 @@
-"""校园广播站点歌管理后台 —— FastAPI 接口（数据版，SQLAlchemy 支持 SQLite / PostgreSQL）。
+"""校园广播站点歌管理台 —— 纯 API 后端（异步 SQLAlchemy + asyncpg，PostgreSQL）。
 
 运行：
-    .\\.venv\\Scripts\\python.exe web-admin\\backend\\app.py
-访问：
-    http://127.0.0.1:8600
+    .venv/bin/python web-admin/backend/app.py    （Windows: .\\.venv\\Scripts\\python.exe）
+默认监听：
+    http://127.0.0.1:8600（WEB_ADMIN_PORT）
 
-说明：
-- 数据由统一 db 层（db.py）从 DATABASE_URL 读取：未设置时本地 SQLite
-  data/song_requests.db；设置 PostgreSQL 连接串即切换到 PG。
-- 兼容旧环境变量 WEB_ADMIN_DB（指定 SQLite 文件路径），在未设 DATABASE_URL 时生效。
-- 鉴权：设置环境变量 WEB_ADMIN_USERNAME / WEB_ADMIN_PASSWORD 后，管理接口需先
-  `POST /api/login`（账号+密码）拿 token，再带 `Authorization: Bearer <token>`。
-  两者都不设置则不鉴权（本地调试）。旧 `WEB_ADMIN_TOKEN` 仍兼容（作 token 登录）。
+前端（独立项目 radio-admin）通过跨域直接访问本服务，本服务不托管静态文件；
+允许的跨域来源由 WEB_ADMIN_CORS 配置（逗号分隔，默认 *，生产环境请收紧）。
+
+配置：backend 使用自己的配置文件 `web-admin/backend/.env`
+（复制 `.env.example` 修改；已导出的同名环境变量优先于文件）。
+
+鉴权：设置 WEB_ADMIN_USERNAME / WEB_ADMIN_PASSWORD 后，管理接口需先
+`POST /api/login` 拿 token，再带 `Authorization: Bearer <token>`；
+两者都不设置则不鉴权（仅本地调试）。
+
+数据库由 DATABASE_URL 决定（必配），与 bot 共用同一 db 层。
 """
 
 from __future__ import annotations
@@ -20,100 +24,72 @@ import hashlib
 import hmac
 import json
 import os
-import sys
-from datetime import datetime
+import random
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import AsyncIterator
+
+from qqbot.util import load_dotenv
+
+_BACKEND_ENV = Path(__file__).resolve().parent / ".env"
+
+
+def _apply_backend_env() -> None:
+    """把 backend 自己的 .env 导入环境变量（已设置的环境变量优先），须在任何 qqbot 导入之前执行。"""
+    for key, value in load_dotenv(_BACKEND_ENV).items():
+        os.environ.setdefault(key, value)
+
+
+_apply_backend_env()
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import cast, delete, func, select, String
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # 项目根，供 import db
+from qqbot.config import settings
+from qqbot.db import get_session_factory, init_db
+from qqbot.db.models import PlayHistory, Song, User, UserRequest
+from qqbot.services.notices import NoticeService
+from qqbot.services.screening import RULES, ScreeningService
+from qqbot.util import today_key
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # qq-bot/
-_SAMPLE_DB = Path(__file__).resolve().parent.parent / "sample_db" / "song_requests.db"
-_FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
-_PERMISSIONS_FILE = _PROJECT_ROOT / "data" / "permissions.json"
-
-# 兼容旧 WEB_ADMIN_DB：在未设 DATABASE_URL 时，用它指向本地 sqlite 文件。
-if not os.environ.get("DATABASE_URL"):
-    _legacy = Path(os.environ.get("WEB_ADMIN_DB") or (_PROJECT_ROOT / "data" / "song_requests.db"))
-    if not _legacy.exists() and _SAMPLE_DB.exists():
-        _legacy = _SAMPLE_DB
-    os.environ["DATABASE_URL"] = f"sqlite:///{_legacy.as_posix()}"
-
-ADMIN_USERNAME = os.environ.get("WEB_ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.environ.get("WEB_ADMIN_PASSWORD", "")
-ADMIN_TOKEN = os.environ.get("WEB_ADMIN_TOKEN", "")
-
-from db import (  # noqa: E402  (需先处理 DATABASE_URL)
-    PlayHistory,
-    SessionLocal,
-    Song,
-    SongSelectedNotice,
-    User,
-    UserRequest,
-    init_db,
-)
-
-init_db()
+notices = NoticeService()
+screening = ScreeningService()
 
 
-app = FastAPI(title="校园广播站点歌管理后台")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    await init_db()
+    yield
+
+
+app = FastAPI(title="校园广播站点歌管理后台", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.web_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-def _session() -> Session:
-    return SessionLocal()
+# ---------------------------------------------------------------- 鉴权
 
 
-def _record_selected_notice(sess: Session, song_id: int, name: str, artist: str) -> None:
-    """歌曲被选用后，写入一条待通知缓存（含该歌所有点歌用户，去重）。
-
-    只写缓存不发送：由 bot 端定时任务读取后逐用户私聊通知。
-    """
-    from sqlalchemy import select as _select
-
-    import json as _json
-
-    uids = list(
-        sess.execute(
-            _select(UserRequest.user_id)
-            .where(UserRequest.song_id == song_id)
-            .distinct()
-        ).scalars().all()
-    )
-    if not uids:
-        return
-    sess.add(
-        SongSelectedNotice(
-            song_id=song_id,
-            name=name,
-            artist=artist,
-            selected_at=datetime.now().isoformat(timespec="seconds"),
-            user_ids=_json.dumps(list(dict.fromkeys(uids)), ensure_ascii=False),
-            sent=False,
-            sent_at="",
-        )
-    )
-
-
-# ---------------------------------------------------------------- 鉴权 ------------------------------------------------
+def _session_token() -> str:
+    if not settings.web_admin_password:
+        return ""
+    key = settings.web_admin_password.encode()
+    msg = settings.web_admin_username.encode()
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()
 
 
 def require_auth(authorization: str = Header(default="")) -> None:
-    if not ADMIN_PASSWORD and not ADMIN_TOKEN:
+    if not settings.web_admin_password and not settings.web_admin_token:
         return
-    expect = f"Bearer {_session_token()}" if ADMIN_PASSWORD else f"Bearer {ADMIN_TOKEN}"
-    if authorization != expect:
+    expect = f"Bearer {_session_token()}" if settings.web_admin_password else f"Bearer {settings.web_admin_token}"
+    if not hmac.compare_digest(authorization, expect):
         raise HTTPException(401, "未授权")
 
 
@@ -121,53 +97,34 @@ AuthDep = Depends(require_auth)
 _auth = {"dependencies": [AuthDep]}
 
 
-# ---------------------------------------------------------------- 登录 ------------------------------------------------
-
-
 class LoginIn(BaseModel):
     username: str
     password: str
 
 
-def _session_token() -> str:
-    """由账号+密码生成稳定会话 token（无状态，改密码即失效）。"""
-    if not ADMIN_PASSWORD:
-        return ""
-    key = (ADMIN_PASSWORD or "").encode()
-    msg = (ADMIN_USERNAME or "admin").encode()
-    return hmac.new(key, msg, hashlib.sha256).hexdigest()
-
-
 @app.post("/api/login")
 def login(body: LoginIn):
-    if not ADMIN_PASSWORD and not ADMIN_TOKEN:
+    if not settings.web_admin_password and not settings.web_admin_token:
         return {"ok": True, "token": ""}
-    if ADMIN_PASSWORD:
-        if body.username == ADMIN_USERNAME and body.password == ADMIN_PASSWORD:
+    if settings.web_admin_password:
+        if body.username == settings.web_admin_username and body.password == settings.web_admin_password:
             return {"ok": True, "token": _session_token()}
         raise HTTPException(401, "账号或密码错误")
-    # 旧 token 登录兜底
-    if body.password == ADMIN_TOKEN:
-        return {"ok": True, "token": ADMIN_TOKEN}
+    if body.password == settings.web_admin_token:
+        return {"ok": True, "token": settings.web_admin_token}
     raise HTTPException(401, "token 错误")
 
 
-# ---------------------------------------------------------------- 点歌池 ------------------------------------------------
+# ---------------------------------------------------------------- 点歌池
 
 
 @app.get("/api/pool", **_auth)
-def get_pool(
-    name: str = "",
-    user: str = "",
-    status: str = "",
-    page: int = 1,
-    size: int = 20,
-):
+async def get_pool(name: str = "", user: str = "", status: str = "", page: int = 1, size: int = 20):
     page = max(int(page), 1)
     size = min(max(int(size), 1), 200)
+    factory = get_session_factory()
 
-    with _session() as s:
-        # 点歌池只看被点过的歌：songs 上存在至少一条 user_requests
+    async with factory() as s:
         sub_agg = (
             select(
                 UserRequest.song_id,
@@ -208,52 +165,62 @@ def get_pool(
         if conds:
             stmt = stmt.where(*conds)
 
-        total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        total = await s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         if not status:
-            # 默认：待选用/禁播在前，已选用排末尾；组内按最近点歌时间倒序
             stmt = stmt.order_by(Song.selected.asc(), sub_agg.c.last_time.desc())
         else:
             stmt = stmt.order_by(sub_agg.c.last_time.desc())
         stmt = stmt.limit(size).offset((page - 1) * size)
+        rows = (await s.execute(stmt)).mappings().all()
 
-        rows = s.execute(stmt).mappings().all()
-        out = []
-        for r in rows:
-            requester_ids = s.execute(
-                select(UserRequest.user_id)
-                .where(UserRequest.song_id == r["id"])
-                .distinct()
-            ).scalars().all()
-            out.append(
-                {
-                    "id": r["id"],
-                    "name": r["name"],
-                    "artist": r["artist"],
-                    "is_banned": bool(r["is_banned"]),
-                    "selected": bool(r["selected"]),
-                    "req_count": r["req_count"],
-                    "last_time": r["last_time"],
-                    "requesters": list(requester_ids),
-                }
-            )
+        song_ids = [r["id"] for r in rows]
+        requesters_map: dict[int, list[str]] = {sid: [] for sid in song_ids}
+        if song_ids:
+            pairs = (
+                await s.execute(
+                    select(UserRequest.song_id, UserRequest.user_id).where(
+                        UserRequest.song_id.in_(song_ids)
+                    )
+                )
+            ).all()
+            for sid, uid in pairs:
+                if uid not in requesters_map[sid]:
+                    requesters_map[sid].append(uid)
+
+        out = [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "artist": r["artist"],
+                "is_banned": bool(r["is_banned"]),
+                "selected": bool(r["selected"]),
+                "req_count": r["req_count"],
+                "last_time": r["last_time"],
+                "requesters": requesters_map[r["id"]],
+            }
+            for r in rows
+        ]
         return {"data": out, "total": total, "page": page, "size": size}
 
 
 @app.get("/api/songs/{sid}/requests", **_auth)
-def get_song_requests(sid: int):
-    with _session() as s:
-        rows = s.execute(
-            select(
-                UserRequest.user_id,
-                UserRequest.time,
-                UserRequest.remark,
-                UserRequest.day_count,
-                Song.name,
-                Song.artist,
+async def get_song_requests(sid: int):
+    factory = get_session_factory()
+    async with factory() as s:
+        rows = (
+            await s.execute(
+                select(
+                    UserRequest.user_id,
+                    UserRequest.time,
+                    UserRequest.remark,
+                    UserRequest.day_count,
+                    Song.name,
+                    Song.artist,
+                )
+                .join(Song, Song.id == UserRequest.song_id)
+                .where(UserRequest.song_id == sid)
+                .order_by(UserRequest.time.desc())
             )
-            .join(Song, Song.id == UserRequest.song_id)
-            .where(UserRequest.song_id == sid)
-            .order_by(UserRequest.time.desc())
         ).mappings().all()
         return {"data": [dict(r) for r in rows]}
 
@@ -264,26 +231,22 @@ class SelectManyIn(BaseModel):
 
 
 @app.post("/api/songs/select_many", **_auth)
-def select_many(body: SelectManyIn):
-    now = datetime.now().isoformat(timespec="seconds")
-    with _session() as s:
-        songs = s.execute(
-            select(Song).where(Song.id.in_(body.ids))
-        ).scalars().all()
+async def select_many(body: SelectManyIn):
+    now = datetime.now()
+    factory = get_session_factory()
+    async with factory() as s:
+        songs = (await s.execute(select(Song).where(Song.id.in_(body.ids)))).scalars().all()
         for song in songs:
             song.selected = True
-            _record_selected_notice(s, song.id, song.name, song.artist)
             s.add(
                 PlayHistory(
-                    song_id=song.id,
-                    user_id="",
-                    note=body.note,
-                    played_at=now,
-                    created_at=now,
+                    song_id=song.id, user_id="", note=body.note, played_at=now, created_at=now
                 )
             )
-        s.commit()
-        return {"ok": True, "count": len(songs)}
+        await s.commit()
+    for song in songs:
+        await notices.add(song.id, song.name, song.artist)
+    return {"ok": True, "count": len(songs)}
 
 
 class SelectIn(BaseModel):
@@ -292,66 +255,81 @@ class SelectIn(BaseModel):
 
 
 @app.post("/api/songs/{sid}/select", **_auth)
-def select_song(sid: int, body: SelectIn):
-    now = datetime.now().isoformat(timespec="seconds")
-    with _session() as s:
-        song = s.get(Song, sid)
-        if not song:
+async def select_song(sid: int, body: SelectIn):
+    now = datetime.now()
+    factory = get_session_factory()
+    async with factory() as s:
+        song = await s.get(Song, sid)
+        if song is None:
             raise HTTPException(404, "歌曲不存在")
         song.selected = True
-        _record_selected_notice(s, song.id, song.name, song.artist)
         s.add(
-            PlayHistory(
-                song_id=sid,
-                user_id=body.user_id,
-                note=body.note,
-                played_at=now,
-                created_at=now,
-            )
+            PlayHistory(song_id=sid, user_id=body.user_id, note=body.note, played_at=now, created_at=now)
         )
-        s.commit()
-        return {"ok": True}
+        await s.commit()
+    await notices.add(song.id, song.name, song.artist)
+    return {"ok": True}
 
 
 @app.post("/api/songs/{sid}/ban", **_auth)
-def ban_song(sid: int):
-    with _session() as s:
-        song = s.get(Song, sid)
-        if song:
+async def ban_song(sid: int):
+    factory = get_session_factory()
+    async with factory() as s:
+        song = await s.get(Song, sid)
+        if song is not None:
             song.is_banned = True
-            s.commit()
+            await s.commit()
     return {"ok": True}
 
 
 @app.post("/api/songs/{sid}/unban", **_auth)
-def unban_song(sid: int):
-    with _session() as s:
-        song = s.get(Song, sid)
-        if song:
+async def unban_song(sid: int):
+    factory = get_session_factory()
+    async with factory() as s:
+        song = await s.get(Song, sid)
+        if song is not None:
             song.is_banned = False
-            s.commit()
+            await s.commit()
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- 用户 ------------------------------------------------
+class BanManyIn(BaseModel):
+    ids: list[int]
+
+
+@app.post("/api/songs/ban_many", **_auth)
+async def ban_many(body: BanManyIn):
+    factory = get_session_factory()
+    async with factory() as s:
+        res = await s.execute(
+            Song.__table__.update().where(Song.id.in_(body.ids)).values(is_banned=True)
+        )
+        await s.commit()
+        return {"ok": True, "count": res.rowcount or 0}
+
+
+# ---------------------------------------------------------------- 用户
 
 
 @app.get("/api/users", **_auth)
-def get_users():
-    today = datetime.now().strftime("%Y-%m-%d")
-    with _session() as s:
-        rows = s.execute(
-            select(
-                User.user_id,
-                User.is_banned,
-                User.created_at,
-                func.coalesce(
-                    func.sum(UserRequest.day_count).filter(UserRequest.day == today), 0
-                ).label("today_count"),
+async def get_users():
+    today = today_key()
+    factory = get_session_factory()
+    async with factory() as s:
+        rows = (
+            await s.execute(
+                select(
+                    User.user_id,
+                    User.is_banned,
+                    User.created_at,
+                    func.coalesce(
+                        func.sum(UserRequest.day_count).filter(UserRequest.day == today), 0
+                    ).label("today_count"),
+                )
+                .outerjoin(UserRequest, UserRequest.user_id == User.user_id)
+                .group_by(User.user_id, User.is_banned, User.created_at)
+                .order_by(User.user_id)
             )
-            .outerjoin(UserRequest, UserRequest.user_id == User.user_id)
-            .group_by(User.user_id, User.is_banned, User.created_at)
-            .order_by(User.user_id)
         ).mappings().all()
         return {
             "data": [
@@ -367,41 +345,38 @@ def get_users():
 
 
 @app.post("/api/users/{uid}/ban", **_auth)
-def ban_user(uid: str):
-    with _session() as s:
-        user = s.get(User, uid)
-        if user:
+async def ban_user(uid: str):
+    factory = get_session_factory()
+    async with factory() as s:
+        user = await s.get(User, uid)
+        if user is not None:
             user.is_banned = True
         else:
-            s.add(
-                User(
-                    user_id=uid,
-                    is_banned=True,
-                    created_at=datetime.now().isoformat(timespec="seconds"),
-                )
-            )
-        s.commit()
+            s.add(User(user_id=uid, is_banned=True))
+        await s.commit()
     return {"ok": True}
 
 
 @app.post("/api/users/{uid}/unban", **_auth)
-def unban_user(uid: str):
-    with _session() as s:
-        user = s.get(User, uid)
-        if user:
+async def unban_user(uid: str):
+    factory = get_session_factory()
+    async with factory() as s:
+        user = await s.get(User, uid)
+        if user is not None:
             user.is_banned = False
-            s.commit()
+            await s.commit()
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- 播放历史 ------------------------------------------------
+# ---------------------------------------------------------------- 播放历史
 
 
 @app.get("/api/history", **_auth)
-def get_history(name: str = "", date: str = "", page: int = 1, size: int = 20):
+async def get_history(name: str = "", date: str = "", page: int = 1, size: int = 20):
     page = max(int(page), 1)
     size = min(max(int(size), 1), 200)
-    with _session() as s:
+    factory = get_session_factory()
+    async with factory() as s:
         stmt = (
             select(
                 PlayHistory.id,
@@ -418,57 +393,44 @@ def get_history(name: str = "", date: str = "", page: int = 1, size: int = 20):
         if name:
             conds.append(Song.name.like(f"%{name}%"))
         if date:
-            conds.append(PlayHistory.played_at.like(f"{date}%"))
+            conds.append(cast(PlayHistory.played_at, String).like(f"{date}%"))
         if conds:
             stmt = stmt.where(*conds)
-        total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        total = await s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         stmt = stmt.order_by(PlayHistory.played_at.desc()).limit(size).offset((page - 1) * size)
-        rows = s.execute(stmt).mappings().all()
-        return {
-            "data": [dict(r) for r in rows],
-            "total": total,
-            "page": page,
-            "size": size,
-        }
+        rows = (await s.execute(stmt)).mappings().all()
+        return {"data": [dict(r) for r in rows], "total": total, "page": page, "size": size}
 
 
-def _reset_songs_by_history_ids(ids: list[int]) -> int:
-    """删除指定播放历史后，把对应歌曲的 selected 重置为 0（回到待选用）。
-
-    先取受影响歌曲 id（去重），再清空这些歌曲的历史记录，最后重置选中状态。
-    返回被重置的歌曲数。
-    """
+async def _reset_songs_by_history_ids(ids: list[int]) -> int:
     if not ids:
         return 0
-    with _session() as s:
+    factory = get_session_factory()
+    async with factory() as s:
         song_ids = list(
-            s.execute(
-                select(PlayHistory.song_id)
-                .where(PlayHistory.id.in_(ids))
-                .distinct()
+            (
+                await s.execute(
+                    select(PlayHistory.song_id).where(PlayHistory.id.in_(ids)).distinct()
+                )
             ).scalars().all()
         )
-        # 事务性写入：删历史 + 重置选中状态
-        s.execute(delete(PlayHistory).where(PlayHistory.id.in_(ids)))
+        await s.execute(delete(PlayHistory).where(PlayHistory.id.in_(ids)))
         if song_ids:
-            # 只把受影响歌曲的“已选用”标记重置为 False（回到待选用），不删除歌曲
-            s.execute(
-                Song.__table__.update()
-                .where(Song.id.in_(song_ids))
-                .values(selected=False)
+            await s.execute(
+                Song.__table__.update().where(Song.id.in_(song_ids)).values(selected=False)
             )
-        s.commit()
+        await s.commit()
     return len(song_ids)
 
 
 @app.delete("/api/history/{hid}", **_auth)
-def delete_history_one(hid: int):
-    with _session() as s:
-        exists = s.get(PlayHistory, hid) is not None
+async def delete_history_one(hid: int):
+    factory = get_session_factory()
+    async with factory() as s:
+        exists = await s.get(PlayHistory, hid) is not None
     if not exists:
         raise HTTPException(404, "播放历史不存在")
-    n = _reset_songs_by_history_ids([hid])
-    return {"ok": True, "reset_songs": n}
+    return {"ok": True, "reset_songs": await _reset_songs_by_history_ids([hid])}
 
 
 class HistoryDeleteManyIn(BaseModel):
@@ -476,66 +438,255 @@ class HistoryDeleteManyIn(BaseModel):
 
 
 @app.post("/api/history/delete_many", **_auth)
-def delete_history_many(body: HistoryDeleteManyIn):
+async def delete_history_many(body: HistoryDeleteManyIn):
     if not body.ids:
         return {"ok": True, "count": 0, "reset_songs": 0}
-    n = _reset_songs_by_history_ids(body.ids)
-    return {"ok": True, "count": len(body.ids), "reset_songs": n}
+    return {
+        "ok": True,
+        "count": len(body.ids),
+        "reset_songs": await _reset_songs_by_history_ids(body.ids),
+    }
 
 
 @app.post("/api/history/delete_all", **_auth)
-def delete_history_all():
-    with _session() as s:
+async def delete_history_all():
+    factory = get_session_factory()
+    async with factory() as s:
         song_ids = list(
-            s.execute(select(PlayHistory.song_id).distinct()).scalars().all()
+            (await s.execute(select(PlayHistory.song_id).distinct())).scalars().all()
         )
-        count = s.scalar(select(func.count()).select_from(PlayHistory)) or 0
-        s.execute(delete(PlayHistory))
+        count = await s.scalar(select(func.count()).select_from(PlayHistory)) or 0
+        await s.execute(delete(PlayHistory))
         if song_ids:
-            s.execute(
-                Song.__table__.update()
-                .where(Song.id.in_(song_ids))
-                .values(selected=False)
+            await s.execute(
+                Song.__table__.update().where(Song.id.in_(song_ids)).values(selected=False)
             )
-        s.commit()
+        await s.commit()
         return {"ok": True, "count": count, "reset_songs": len(song_ids)}
 
 
-# ---------------------------------------------------------------- 统计 ------------------------------------------------
+# ---------------------------------------------------------------- 每日选曲抽取
+
+
+class DrawFiltersIn(BaseModel):
+    date_from: str | None = None
+    date_to: str | None = None
+    exclude_selected: bool = True
+    exclude_banned: bool = True
+    platforms: list[str] = []
+    user_ids: list[str] = []
+    remark_keyword: str = ""
+    count: int = 5
+    weighted: bool = False
+
+
+def _draw_request_conditions(body: DrawFiltersIn):
+    """点歌记录侧的筛选条件（时间 / 点歌人 / 备注关键词）。"""
+    conds = []
+    if body.date_from:
+        conds.append(UserRequest.time >= datetime.fromisoformat(body.date_from))
+    if body.date_to:
+        conds.append(UserRequest.time < datetime.fromisoformat(body.date_to) + timedelta(days=1))
+    if body.user_ids:
+        conds.append(UserRequest.user_id.in_(body.user_ids))
+    if body.remark_keyword:
+        conds.append(UserRequest.remark.like(f"%{body.remark_keyword}%"))
+    return conds
+
+
+async def _candidate_song_ids(body: DrawFiltersIn) -> list[int]:
+    """按条件得到候选歌曲 id 列表（去重）。"""
+    factory = get_session_factory()
+    async with factory() as s:
+        stmt = (
+            select(UserRequest.song_id.distinct())
+            .join(Song, Song.id == UserRequest.song_id)
+        )
+        song_conds = []
+        if body.exclude_selected:
+            song_conds.append(Song.selected.is_(False))
+        if body.exclude_banned:
+            song_conds.append(Song.is_banned.is_(False))
+        if body.platforms:
+            song_conds.append(Song.source.in_(body.platforms))
+        if song_conds:
+            stmt = stmt.where(*song_conds)
+        conds = _draw_request_conditions(body)
+        if conds:
+            stmt = stmt.where(*conds)
+        return list((await s.execute(stmt)).scalars().all())
+
+
+@app.post("/api/pool/candidates", **_auth)
+async def pool_candidates(body: DrawFiltersIn):
+    song_ids = await _candidate_song_ids(body)
+    users: list[str] = []
+    if song_ids:
+        factory = get_session_factory()
+        async with factory() as s:
+            users = list(
+                (
+                    await s.execute(
+                        select(UserRequest.user_id.distinct())
+                        .where(UserRequest.song_id.in_(song_ids))
+                        .order_by(UserRequest.user_id)
+                    )
+                ).scalars().all()
+            )
+    return {"data": {"total": len(song_ids), "users": users}}
+
+
+def _weighted_sample(items: list[dict], k: int) -> list[dict]:
+    """按权重无放回抽样（权重至少为 1）。"""
+    pool = list(items)
+    weights = [max(int(item["req_count"]), 1) for item in pool]
+    chosen: list[dict] = []
+    for _ in range(min(k, len(pool))):
+        total = sum(weights)
+        r = random.uniform(0, total)
+        acc = 0.0
+        for i, w in enumerate(weights):
+            acc += w
+            if r <= acc:
+                chosen.append(pool[i])
+                del pool[i]
+                del weights[i]
+                break
+    return chosen
+
+
+@app.post("/api/pool/draw", **_auth)
+async def pool_draw(body: DrawFiltersIn):
+    song_ids = await _candidate_song_ids(body)
+    if not song_ids:
+        return {"data": {"songs": []}}
+    factory = get_session_factory()
+    async with factory() as s:
+        req_conds = [UserRequest.song_id.in_(song_ids)]
+        req_conds.extend(_draw_request_conditions(body))
+        counts = {
+            sid: cnt
+            for sid, cnt in (
+                await s.execute(
+                    select(UserRequest.song_id, func.count(UserRequest.id))
+                    .where(*req_conds)
+                    .group_by(UserRequest.song_id)
+                )
+            ).all()
+        }
+        remarks: dict[int, str] = {}
+        for sid, remark in (
+            await s.execute(
+                select(UserRequest.song_id, UserRequest.remark).where(
+                    UserRequest.song_id.in_(song_ids), UserRequest.remark != ""
+                )
+            )
+        ).all():
+            remarks.setdefault(sid, remark)
+        requesters: dict[int, list[str]] = {}
+        for sid, uid in (
+            await s.execute(
+                select(UserRequest.song_id, UserRequest.user_id).where(
+                    UserRequest.song_id.in_(song_ids)
+                )
+            )
+        ).all():
+            if uid not in requesters.setdefault(sid, []):
+                requesters[sid].append(uid)
+        songs = (await s.execute(select(Song).where(Song.id.in_(song_ids)))).scalars().all()
+
+    candidates = [
+        {
+            "id": song.id,
+            "name": song.name,
+            "artist": song.artist,
+            "album": song.album,
+            "cover": song.cover,
+            "source": song.source,
+            "url": song.url,
+            "link": song.link,
+            "req_count": counts.get(song.id, 0),
+            "requesters": requesters.get(song.id, []),
+            "remark": remarks.get(song.id, ""),
+        }
+        for song in songs
+    ]
+    count = min(max(int(body.count), 1), len(candidates))
+    picked = _weighted_sample(candidates, count) if body.weighted else random.sample(candidates, count)
+    return {"data": {"songs": picked}}
+
+
+# ---------------------------------------------------------------- 筛选 agent
+
+
+@app.get("/api/agent/rules", **_auth)
+async def agent_rules():
+    return {"rules": RULES}
+
+
+class ScreenSongsIn(BaseModel):
+    song_ids: list[int]
+
+
+@app.post("/api/agent/screen-songs", **_auth)
+async def screen_songs(body: ScreenSongsIn):
+    return {"data": await screening.screen(body.song_ids)}
+
+
+# ---------------------------------------------------------------- 通知状态
+
+
+@app.get("/api/notices/status", **_auth)
+async def notices_status():
+    pending, sent_count, failed = await notices.status()
+    return {"data": {"pending": pending, "sent_count": sent_count, "failed": failed}}
+
+
+# ---------------------------------------------------------------- 统计
 
 
 @app.get("/api/stats", **_auth)
-def get_stats():
-    with _session() as s:
-        total = s.scalar(select(func.count()).select_from(UserRequest)) or 0
-        requests = s.scalar(select(func.count(func.distinct(UserRequest.song_id)))) or 0
-        selected = s.scalar(select(func.count()).select_from(Song).where(Song.selected.is_(True))) or 0
-        banned = s.scalar(select(func.count()).select_from(Song).where(Song.is_banned.is_(True))) or 0
-        pending = s.scalar(
-            select(func.count())
-            .select_from(Song)
-            .where(Song.selected.is_(False))
-            .where(Song.is_banned.is_(False))
-            .where(
-                Song.id.in_(select(UserRequest.song_id).distinct())
+async def get_stats():
+    factory = get_session_factory()
+    async with factory() as s:
+        total = await s.scalar(select(func.count()).select_from(UserRequest)) or 0
+        requests = (
+            await s.scalar(select(func.count(func.distinct(UserRequest.song_id)))) or 0
+        )
+        selected = (
+            await s.scalar(select(func.count()).select_from(Song).where(Song.selected.is_(True))) or 0
+        )
+        banned = (
+            await s.scalar(select(func.count()).select_from(Song).where(Song.is_banned.is_(True))) or 0
+        )
+        pending = (
+            await s.scalar(
+                select(func.count())
+                .select_from(Song)
+                .where(Song.selected.is_(False))
+                .where(Song.is_banned.is_(False))
+                .where(Song.id.in_(select(UserRequest.song_id).distinct()))
             )
-        ) or 0
+            or 0
+        )
         hot = [
             dict(r)
-            for r in s.execute(
-                select(Song.name, Song.artist, func.count(UserRequest.id).label("cnt"))
-                .join(UserRequest, UserRequest.song_id == Song.id)
-                .group_by(Song.id)
-                .order_by(func.count(UserRequest.id).desc())
-                .limit(10)
+            for r in (
+                await s.execute(
+                    select(Song.name, Song.artist, func.count(UserRequest.id).label("cnt"))
+                    .join(UserRequest, UserRequest.song_id == Song.id)
+                    .group_by(Song.id)
+                    .order_by(func.count(UserRequest.id).desc())
+                    .limit(10)
+                )
             ).mappings().all()
         ]
         trend = [
             {"day": r[0], "cnt": r[1]}
-            for r in s.execute(
-                select(UserRequest.day, func.count())
-                .group_by(UserRequest.day)
-                .order_by(UserRequest.day)
+            for r in (
+                await s.execute(
+                    select(UserRequest.day, func.count()).group_by(UserRequest.day).order_by(UserRequest.day)
+                )
             ).all()
         ]
         return {
@@ -551,18 +702,18 @@ def get_stats():
         }
 
 
-# ---------------------------------------------------------------- 权限白名单 ------------------------------------------------
+# ---------------------------------------------------------------- 权限白名单
 
 
 def _read_permissions() -> dict:
     try:
-        return json.loads(_PERMISSIONS_FILE.read_text(encoding="utf-8"))
+        return json.loads(settings.permissions_file.read_text(encoding="utf-8"))
     except Exception:
         return {"admins": [], "super_admins": []}
 
 
 @app.get("/api/permissions", **_auth)
-def get_permissions():
+async def get_permissions():
     return {"data": _read_permissions()}
 
 
@@ -572,11 +723,11 @@ class PermissionsIn(BaseModel):
 
 
 @app.put("/api/permissions", **_auth)
-def put_permissions(body: PermissionsIn):
+async def put_permissions(body: PermissionsIn):
     data = {"admins": [str(x) for x in body.admins], "super_admins": [str(x) for x in body.super_admins]}
     try:
-        _PERMISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _PERMISSIONS_FILE.write_text(
+        settings.permissions_file.parent.mkdir(parents=True, exist_ok=True)
+        settings.permissions_file.write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         return {"ok": True}
@@ -584,11 +735,7 @@ def put_permissions(body: PermissionsIn):
         raise HTTPException(500, f"写入白名单失败: {exc}")
 
 
-# 托管前端静态文件（需放在最后，避免覆盖 /api/*）
-app.mount("/", StaticFiles(directory=str(_FRONTEND), html=True), name="static")
-
-
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("WEB_ADMIN_PORT", "8600")))
+    uvicorn.run(app, host="127.0.0.1", port=settings.web_admin_port)

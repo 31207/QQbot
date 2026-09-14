@@ -14,27 +14,23 @@
     <tspan x="36" dy="0">QQbot/</tspan>
     <tspan x="36" dy="24">├─ bot.py                  NoneBot2 入口</tspan>
     <tspan x="36" dy="24">├─ pyproject.toml          依赖与插件配置</tspan>
-    <tspan x="36" dy="24">├─ start.bat               一键启动（NapCat + 机器人）</tspan>
     <tspan x="36" dy="24">├─ .env / .env.prod        驱动器 / 端口 / 插件配置</tspan>
-    <tspan x="36" dy="24">├─ plugins/</tspan>
-    <tspan x="36" dy="24">│  ├─ qq_music_search/     音乐搜索插件</tspan>
-    <tspan x="36" dy="24">│  │  ├─ __init__.py       搜索命令 · 会话 · 渲染编排</tspan>
-    <tspan x="36" dy="24">│  │  ├─ api.py            Go Music API 客户端</tspan>
-    <tspan x="36" dy="24">│  │  ├─ covers.py         封面代理下载 + 磁盘缓存</tspan>
-    <tspan x="36" dy="24">│  │  └─ render.py         结果图 / 歌单图渲染（PIL）</tspan>
-    <tspan x="36" dy="24">│  └─ qq_song/             点歌插件</tspan>
-    <tspan x="36" dy="24">│     ├─ __init__.py       点歌 · 歌单 · 备注命令</tspan>
-    <tspan x="36" dy="24">│     ├─ song_core.py      指令解析与格式化</tspan>
-    <tspan x="36" dy="24">│     └─ storage.py        SQLite 存储（歌曲/用户/记录）</tspan>
+    <tspan x="36" dy="24">├─ src/qqbot/              核心包（可编辑安装）</tspan>
+    <tspan x="36" dy="24">│  ├─ config.py            统一配置（唯一解析点）</tspan>
+    <tspan x="36" dy="24">│  ├─ state.py             会话状态（TTL 自动回收）</tspan>
+    <tspan x="36" dy="24">│  ├─ db/                  异步引擎 / 模型 / 跨方言 UPSERT</tspan>
+    <tspan x="36" dy="24">│  ├─ services/            业务服务（点歌/搜索/权限/封面/通知/LLM）</tspan>
+    <tspan x="36" dy="24">│  └─ plugins/qq_music_bot/ 单一入口插件（分发/指令/动作层）</tspan>
+    <tspan x="36" dy="24">├─ web-admin/              FastAPI 管理台 + 静态前端</tspan>
     <tspan x="36" dy="24">└─ data/</tspan>
-    <tspan x="36" dy="24">   ├─ song_requests.db     SQLite 数据库</tspan>
+    <tspan x="36" dy="24">   ├─ 数据库                 PostgreSQL（DATABASE_URL 指定）</tspan>
     <tspan x="36" dy="24">   └─ covers/              封面缓存（按 URL 的 md5 命名）</tspan>
   </text>
   <text x="36" y="580" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">音乐搜索 API：Go Music API（独立服务）</text>
   <text x="36" y="602" font-size="13" fill="#6b7280" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">地址由 QQ_MUSIC_API_BASE 指定；封面经 /api/v1/music/cover 代理获取</text>
 
   <!-- ============ 右：数据库 ============ -->
-  <text x="560" y="88" font-size="17" font-weight="700" fill="#374151" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">数据库（SQLite · data/song_requests.db）</text>
+  <text x="560" y="88" font-size="17" font-weight="700" fill="#374151" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">数据库（PostgreSQL · DATABASE_URL 指定）</text>
 
   <!-- songs 表 -->
   <g>

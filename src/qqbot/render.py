@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
+import subprocess
 from datetime import datetime
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from qqbot.util import format_short_time
+
+logger = logging.getLogger("qqbot.render")
 
 WIDTH = 920
 PAD = 28
@@ -52,7 +57,9 @@ SOURCE_COLORS = {
 
 _REGULAR_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-DemiLight.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-DemiLight.ttc",
     "/usr/share/fonts/truetype/arphic/uming.ttc",
     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
     "C:/Windows/Fonts/msyh.ttc",
@@ -62,13 +69,90 @@ _REGULAR_CANDIDATES = (
 )
 _BOLD_CANDIDATES = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Medium.ttc",
     "C:/Windows/Fonts/msyhbd.ttc",
     "C:/Windows/Fonts/simhei.ttf",
 )
 
-_REGULAR_FILE = next((p for p in _REGULAR_CANDIDATES if os.path.exists(p)), None)
-_BOLD_FILE = next((p for p in _BOLD_CANDIDATES if os.path.exists(p)), _REGULAR_FILE)
+_CJK_NAME_KEYWORDS = (
+    "cjk", "uming", "ukai", "wqy", "microhei", "zenhei",
+    "sourcehansans", "notosanssc", "notoserifsc", "msyh", "simhei", "simsun", "deng",
+)
+_BOLD_NAME_KEYWORDS = ("bold", "medium", "black", "semibold")
+
+
+def _fc_match_file(pattern: str) -> str | None:
+    """用 fontconfig 按 pattern 查询字体文件路径；不可用返回 None。"""
+    try:
+        out = subprocess.run(
+            ["fc-match", "-f", "%{file}", pattern],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    path = (out.stdout or "").strip().splitlines()[:1]
+    return path[0].strip() if path and path[0].strip() else None
+
+
+def _scan_cjk_fonts() -> list[Path]:
+    """扫描常见字体目录下的 CJK 字体（fontconfig 不可用时兜底）。"""
+    roots = (
+        Path("/usr/share/fonts"),
+        Path.home() / ".fonts",
+        Path.home() / ".local/share/fonts",
+    )
+    found: list[Path] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if path.suffix.lower() not in (".ttf", ".ttc", ".otf"):
+                continue
+            if any(k in path.name.lower() for k in _CJK_NAME_KEYWORDS):
+                found.append(path)
+    return sorted(set(found))
+
+
+def _resolve_fonts() -> tuple[str | None, str | None]:
+    """解析常规/加粗 CJK 字体：显式候选 → fontconfig → 目录扫描。"""
+    regular = next((p for p in _REGULAR_CANDIDATES if os.path.exists(p)), None)
+    bold = next((p for p in _BOLD_CANDIDATES if os.path.exists(p)), None)
+
+    if regular is None:
+        for pattern in ("sans-serif:lang=zh-cn", "sans-serif:lang=zh"):
+            candidate = _fc_match_file(pattern)
+            if candidate and os.path.exists(candidate):
+                regular = candidate
+                break
+    if bold is None:
+        if regular is not None:
+            candidate = _fc_match_file("sans-serif:lang=zh-cn:weight=bold")
+            bold = candidate if candidate and os.path.exists(candidate) else regular
+        else:
+            bold = None
+
+    if regular is None:
+        scanned = _scan_cjk_fonts()
+        if scanned:
+            regular = str(scanned[0])
+            bold_picks = [
+                str(p) for p in scanned if any(k in p.name.lower() for k in _BOLD_NAME_KEYWORDS)
+            ]
+            bold = bold_picks[0] if bold_picks else regular
+    return regular, bold
+
+
+_REGULAR_FILE, _BOLD_FILE = _resolve_fonts()
+
+if _REGULAR_FILE is None:
+    logger.warning(
+        "未找到任何中文字体，渲染图片中的中文将显示为方框；"
+        "请安装中文字体（Debian/Ubuntu: fonts-noto-cjk，Arch: noto-fonts-cjk）"
+    )
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:

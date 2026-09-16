@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -43,7 +44,7 @@ def _apply_backend_env() -> None:
 
 _apply_backend_env()
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import cast, delete, func, select, String
@@ -51,9 +52,11 @@ from sqlalchemy import cast, delete, func, select, String
 from qqbot.config import settings
 from qqbot.db import get_session_factory, init_db
 from qqbot.db.models import PlayHistory, Song, User, UserRequest
+from qqbot.render import render_history_image
+from qqbot.services import fetch_cover
 from qqbot.services.notices import NoticeService
 from qqbot.services.screening import RULES, ScreeningService
-from qqbot.util import today_key
+from qqbot.util import beijing_naive_now, today_key
 
 notices = NoticeService()
 screening = ScreeningService()
@@ -465,6 +468,75 @@ async def delete_history_all():
         return {"ok": True, "count": count, "reset_songs": len(song_ids)}
 
 
+class HistoryImageIn(BaseModel):
+    range: str = "today"  # today / yesterday / week / custom
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+def _history_image_range(body: HistoryImageIn) -> tuple[datetime, datetime, str]:
+    """按北京时间（与库中无时区时间戳对齐）计算筛选区间与展示文案。"""
+    now = beijing_naive_now()
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if body.range == "today":
+        return today0, now, "今天"
+    if body.range == "yesterday":
+        return today0 - timedelta(days=1), today0, "昨天"
+    if body.range == "week":
+        return today0 - timedelta(days=today0.weekday()), now, "本周"
+    start = datetime.fromisoformat(body.date_from) if body.date_from else today0
+    end = (
+        datetime.fromisoformat(body.date_to) + timedelta(days=1)
+        if body.date_to
+        else now
+    )
+    label = f"{body.date_from or '…'} ~ {body.date_to or '…'}"
+    return start, end, label
+
+
+@app.post("/api/history/image", **_auth)
+async def history_image(body: HistoryImageIn):
+    start, end, label = _history_image_range(body)
+    factory = get_session_factory()
+    async with factory() as s:
+        records = (
+            await s.execute(
+                select(
+                    Song.name,
+                    Song.artist,
+                    Song.cover,
+                    PlayHistory.user_id,
+                    PlayHistory.played_at,
+                )
+                .join(Song, Song.id == PlayHistory.song_id)
+                .where(PlayHistory.played_at >= start, PlayHistory.played_at < end)
+                .order_by(PlayHistory.played_at.asc())
+            )
+        ).mappings().all()
+    if not records:
+        raise HTTPException(404, "该时间范围内没有播放记录")
+
+    items = [dict(r) for r in records]
+    tasks: dict[str, object] = {}
+    for r in items:
+        url = r.get("cover") or ""
+        if not url or url in tasks:
+            continue
+        tasks[url] = fetch_cover(
+            settings.music_api_base,
+            url,
+            settings.cover_dir,
+            r.get("name") or "",
+            r.get("artist") or "",
+        )
+    covers: dict[str, object] = {}
+    if tasks:
+        covers = dict(zip(tasks.keys(), await asyncio.gather(*tasks.values())))
+
+    png = await asyncio.to_thread(render_history_image, label, items, covers)
+    return Response(content=png, media_type="image/png")
+
+
 # ---------------------------------------------------------------- 每日选曲抽取
 
 
@@ -478,6 +550,7 @@ class DrawFiltersIn(BaseModel):
     remark_keyword: str = ""
     count: int = 5
     weighted: bool = False
+    exclude_ids: list[int] = []
 
 
 def _draw_request_conditions(body: DrawFiltersIn):
@@ -509,6 +582,8 @@ async def _candidate_song_ids(body: DrawFiltersIn) -> list[int]:
             song_conds.append(Song.is_banned.is_(False))
         if body.platforms:
             song_conds.append(Song.source.in_(body.platforms))
+        if body.exclude_ids:
+            song_conds.append(Song.id.notin_(body.exclude_ids))
         if song_conds:
             stmt = stmt.where(*song_conds)
         conds = _draw_request_conditions(body)

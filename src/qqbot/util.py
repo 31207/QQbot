@@ -5,8 +5,21 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
 _WEEK_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+
+
+def beijing_now() -> datetime:
+    """北京时间（带时区）。"""
+    return datetime.now(BEIJING_TZ)
+
+
+def beijing_naive_now() -> datetime:
+    """北京时间的裸 datetime（与库中无时区时间戳对齐用）。"""
+    return datetime.now(BEIJING_TZ).replace(tzinfo=None)
 
 
 def load_dotenv(path: Path) -> dict[str, str]:

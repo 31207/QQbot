@@ -203,23 +203,29 @@ def _rounded(img: Image.Image, radius: int) -> Image.Image:
     return img
 
 
-def _draw_cover(canvas: Image.Image, pos: tuple[int, int], cover) -> None:
+def _draw_cover(
+    canvas: Image.Image,
+    pos: tuple[int, int],
+    cover,
+    size: int = COVER_SIZE,
+    radius: int = COVER_RADIUS,
+) -> None:
     x, y = pos
     if cover is not None:
-        img = _rounded(_center_crop(cover, COVER_SIZE), COVER_RADIUS)
+        img = _rounded(_center_crop(cover, size), radius)
         canvas.paste(img, (x, y), img)
         return
     d = ImageDraw.Draw(canvas)
     d.rounded_rectangle(
-        (x, y, x + COVER_SIZE - 1, y + COVER_SIZE - 1),
-        radius=COVER_RADIUS,
+        (x, y, x + size - 1, y + size - 1),
+        radius=radius,
         fill=PLACEHOLDER_BG,
     )
     note_font = _font(30)
     note = "♪"
     tw = d.textlength(note, font=note_font)
     d.text(
-        (x + (COVER_SIZE - tw) / 2, y + COVER_SIZE / 2 - 22),
+        (x + (size - tw) / 2, y + size / 2 - 22),
         note,
         font=note_font,
         fill=(170, 175, 182),
@@ -382,6 +388,88 @@ def render_records(
 
     footer = "「备注 编号 内容」添加备注 ·「备注 编号」清除备注"
     fy = HEADER_H + len(records) * RECORD_ROW_H + (FOOTER_H - 24) / 2
+    d.text((WIDTH / 2, fy), footer, font=f_footer, fill=TEXT_SUB, anchor="ma")
+
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------- 播放历史卡片图
+
+HISTORY_CARD_H = 132
+HISTORY_COVER = 100
+
+
+def render_history_image(
+    range_label: str,
+    records: list[dict],
+    covers: dict[str, Image.Image | None],
+) -> bytes:
+    """把一段播放历史画成卡片式长图。
+
+    records 需含 name/artist/cover/played_at/user_id/note；
+    covers 以封面 URL 为键，封面缺失时绘制占位符。
+    """
+    total = len(records)
+    height = HEADER_H + 40 + total * HISTORY_CARD_H + FOOTER_H
+    canvas = Image.new("RGB", (WIDTH, height), BG)
+    d = ImageDraw.Draw(canvas)
+
+    f_title = _font(34, bold=True)
+    f_sub = _font(22)
+    f_name = _font(28, bold=True)
+    f_artist = _font(22)
+    f_meta = _font(20)
+    f_footer = _font(20)
+
+    d.text((PAD, 20), "校园广播站 · 播放记录", font=f_title, fill=TEXT_MAIN)
+    sub = f"{range_label}    共 {total} 首"
+    d.text((PAD, 78), sub, font=f_sub, fill=TEXT_SUB)
+    d.line((PAD, HEADER_H - 1, WIDTH - PAD, HEADER_H - 1), fill=DIVIDER, width=2)
+
+    card_h = HISTORY_CARD_H - 16
+    cover_size = HISTORY_COVER
+    for i, r in enumerate(records):
+        y0 = HEADER_H + 32 + i * HISTORY_CARD_H
+        d.rounded_rectangle(
+            (PAD, y0, WIDTH - PAD, y0 + card_h),
+            radius=12,
+            fill=ROW_BG,
+            outline=DIVIDER,
+        )
+        _draw_cover(
+            canvas,
+            (PAD + 16, y0 + (card_h - cover_size) // 2),
+            covers.get(r.get("cover") or ""),
+            size=cover_size,
+        )
+
+        text_x = PAD + 16 + cover_size + 22
+        right_x = WIDTH - PAD - 16
+        max_text_w = right_x - text_x - 190
+
+        name = r.get("name") or "未知歌曲"
+        artist = r.get("artist") or "未知歌手"
+        d.text((text_x, y0 + 20), _truncate(d, name, f_name, max_text_w), font=f_name, fill=TEXT_MAIN)
+        d.text((text_x, y0 + 62), _truncate(d, artist, f_artist, max_text_w), font=f_artist, fill=TEXT_SUB)
+
+        meta_parts = []
+        if r.get("user_id"):
+            meta_parts.append(f"点歌人 {r['user_id']}")
+        if meta_parts:
+            d.text(
+                (text_x, y0 + 96),
+                _truncate(d, " · ".join(meta_parts), f_meta, max_text_w),
+                font=f_meta,
+                fill=ACCENT,
+            )
+
+        time_text = format_short_time(r.get("played_at"))
+        d.text((right_x, y0 + 38), time_text, font=f_meta, fill=TEXT_SUB, anchor="ra")
+
+    footer = "生成于 " + datetime.now().strftime("%Y-%m-%d %H:%M")
+    fy = HEADER_H + 32 + total * HISTORY_CARD_H + (FOOTER_H - 24) / 2
     d.text((WIDTH / 2, fy), footer, font=f_footer, fill=TEXT_SUB, anchor="ma")
 
     buf = io.BytesIO()

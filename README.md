@@ -40,16 +40,17 @@ qq-bot/
 │   ├── db/                       # 异步引擎/会话/模型/原子 UPSERT
 │   ├── services/                 # 业务服务（点歌/搜索/用户/权限/封面/通知/LLM）
 │   └── plugins/qq_music_bot/     # NoneBot 插件（分发/指令解析/动作层/分享解析）
-├── web-admin/
-│   ├── backend/app.py            # FastAPI 管理台接口（异步，共用 qqbot 包）
-│   └── frontend/index.html       # Vue3 + Element Plus（CDN，锁定版本）
 ├── tests/                        # pytest + pytest-asyncio
 └── docs/                         # 架构与流程图
 ```
 
+管理台前后端是独立项目（本仓库不含）：
+- 后端：`~/PycharmProjects/radio-admin-backend`（FastAPI 纯 API）
+- 前端：`~/WebstormProjects/radio-admin`（Vue3）
+
 ## 快速开始（本机）
 
-1. 安装依赖（**editable 安装项目本身**，让 `import qqbot` 在 bot / web-admin / 测试里都可用）：
+1. 安装依赖（**editable 安装项目本身**，让 `import qqbot` 在 bot / 测试里都可用）：
    ```powershell
    cd D:\qq-bot
    python -m venv .venv
@@ -76,13 +77,9 @@ qq-bot/
 7. 用**另一个账号**把机器人小号加为好友并私聊：`搜索 晴天` → `点歌 1`。
 
 ### 启动管理台
-管理台前端是独立的 Vue3 项目（`~/WebstormProjects/radio-admin`，见 web-admin/README.md），跨域直连后端。
-后端是纯 API 服务，有自己的配置文件 `web-admin/backend/.env`（复制 `.env.example` 填写 DATABASE_URL 与筛选 agent 的 LLM 配置）：
-```powershell
-Copy-Item web-admin\backend\.env.example web-admin\backend\.env
-.\.venv\Scripts\python.exe web-admin\backend\app.py
-```
-后端默认监听 **http://127.0.0.1:8600**（端口 `WEB_ADMIN_PORT`）。
+管理台前后端均已独立成单独项目（不在本仓库）：
+- **后端** `~/PycharmProjects/radio-admin-backend`：复制 `.env.example` 为 `.env`（填 DATABASE_URL、WEB_ADMIN_*、筛选 agent 的 LLM 配置），`pip install -e .` 后 `python app.py`，默认监听 **http://127.0.0.1:8600**
+- **前端** `~/WebstormProjects/radio-admin`：`pnpm dev`（`/api` 代理到 8600），部署时 `VITE_API_BASE` 指向后端域名
 
 ### 运行测试
 测试连本地 PostgreSQL（默认库 `qqbot_test`、用户 `qqbot_admin`），密码经 `PGPASSWORD` 提供，也可用 `TEST_DATABASE_URL` 指定连接串：
@@ -120,7 +117,7 @@ pytest -q
 | `LLM_MAX_STEPS` | 单次对话最大函数调用步数 | `4` |
 | `QQ_PERMISSIONS_FILE` | 权限白名单文件路径 | `data/permissions.json` |
 
-> Web 管理台使用自己的配置文件 `web-admin/backend/.env`（不读 bot 的 .env）：`DATABASE_URL`、`WEB_ADMIN_USERNAME/PASSWORD`、`WEB_ADMIN_PORT`、`WEB_ADMIN_CORS`。
+> 管理台后端（独立项目 radio-admin-backend）使用自己的 `.env`（不读 bot 的 .env）：`DATABASE_URL`、`WEB_ADMIN_USERNAME/PASSWORD`、`WEB_ADMIN_PORT`、`WEB_ADMIN_CORS`、筛选 agent 的 LLM 配置。
 
 ## LLM 智能助手（可选）
 开启后消息处理顺序：

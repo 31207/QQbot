@@ -1,6 +1,6 @@
 # QQ 点歌机器人（第三方 · NapCat + NoneBot2）
 
-基于 **NapCat（协议端，登录个人 QQ 号）+ NoneBot2（Python 框架）** 的 QQ 音乐机器人：成员在**私聊机器人**时搜索歌曲、点歌，机器人把结果绘制成图片返回，点歌记录存入 PostgreSQL。
+基于 **NapCat（协议端，登录个人 QQ 号）+ NoneBot2（Python 框架）** 的 QQ 音乐机器人，同时**可选接入官方 QQ 机器人（nonebot-adapter-qq，双适配器并存）**：成员在**私聊机器人**时搜索歌曲、点歌，机器人把结果绘制成图片返回，点歌记录存入 PostgreSQL。
 
 > ⚠️ 本方案登录的是**个人 QQ 号**（建议小号），有被风控/封号风险，非腾讯官方，请自行评估。
 >
@@ -19,6 +19,7 @@
 - **AI 智能助手（可选，默认关闭）**：对接任意 OpenAI 兼容大模型（DeepSeek / 智谱 GLM / 通义千问 / Kimi）。开启后：确定性指令（搜索/点歌/…）**照常本地处理**，LLM 仅做回复措辞；自然语言消息由大模型函数调用理解。LLM 故障不影响确定性指令。
 - **权限分级（三级）**：用户、管理员、超级管理员。管理员额外可**重置所有人点歌次数**、**禁播/解禁歌曲**；超级管理员额外可**封禁/解封用户**。权限只能通过 `data/permissions.json` 白名单文件授予，机器人端无法授予。
 - 所有指令**仅私聊**可用（私聊直接发，无需 @）。
+- **双适配器**：OneBot V11（NapCat）与官方 QQ（开放平台机器人）可同时接入；业务逻辑共用，收发按适配器自动适配（官方 QQ 发图自动走文件上传 API）。官方机器人的用户标识是 **user_openid**（非 QQ 号），封禁/白名单需按 openid 配置；歌曲分享卡片链路仅 NapCat 支持。
 
 ## 架构
 
@@ -96,6 +97,7 @@ pytest -q
 | `DRIVER` | NoneBot 驱动器（fastapi 反代 WS + websockets 正向 WS 客户端） | `~fastapi+~websockets` |
 | `HOST` / `PORT` | 监听地址/端口（NapCat 反向 WS 指向它） | `127.0.0.1` / `8080` |
 | `ONEBOT_WS_URLS` | 正向 WebSocket 地址（NapCat 作为 WS 服务端时） | 空 |
+| `QQ_BOTS` | 官方 QQ 机器人配置（JSON 数组：`[{"id","token","secret"}]`），留空则不接官方 QQ | 空 |
 | `DATABASE_URL` | PostgreSQL 连接串（**必填**），如 `postgresql+asyncpg://user:pass@127.0.0.1:5432/qqbot` | 无 |
 | `QQ_MUSIC_API_BASE` | Go Music API 地址 | `http://127.0.0.1:8081` |
 | `QQ_MUSIC_COVER_DIR` | 封面缓存目录 | `data/covers` |

@@ -1,22 +1,20 @@
-"""NoneBot2 入口。"""
+"""NoneBot2 入口（双 adapter：OneBot V11 + 官方 QQ）。
 
-import os
+依赖安装：``pip install -e .``（editable，保证 import qqbot 可用）。
+官方 QQ 需要在 .env 配置 QQ_BOTS（JSON 数组：id/token/secret），
+不配也可以只跑 OneBot（NapCat）。
+"""
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter
+from nonebot.adapters.qq import Adapter as QQAdapter
 
 nonebot.init()
-
-# 允许通过 .env 配置 DATABASE_URL 切换数据库（系统环境变量优先级更高）。
-# NoneBot 不会把 .env 的键自动注入 os.environ，这里补一步，让 bot 的 db 层读到。
-if not os.environ.get("DATABASE_URL"):
-    _db_url = getattr(nonebot.get_driver().config, "database_url", None)
-    if _db_url:
-        os.environ["DATABASE_URL"] = str(_db_url)
-
-nonebot.get_driver().register_adapter(Adapter)
+driver = nonebot.get_driver()
+driver.register_adapter(Adapter)
+driver.register_adapter(QQAdapter)
+nonebot.load_builtin_plugins('echo', 'single_session')
 nonebot.load_from_toml("pyproject.toml")
-
 
 if __name__ == "__main__":
     nonebot.run()

@@ -1,4 +1,4 @@
-"""校园广播站 QQ 点歌机器人（单一业务插件，双 adapter：OneBot V11 / 官方 QQ）。
+"""校园广播站 QQ 点歌机器人（单一业务插件，多通道：OneBot V11 / 官方 QQ C2C / 频道私信）。
 
 消息处理顺序（业务分发与 adapter 无关，收发统一走 Channel）：
 1. 歌曲分享卡片（仅 OneBot 有 music/json/xml 段）→ 精确搜索 + 待确认点歌；
@@ -10,8 +10,9 @@
 
 后台任务：会话状态回收（防内存泄漏）+ 每周五 19:00 歌曲选中通知（只重试失败用户）。
 
-注意：官方 QQ 的用户标识是 user_openid（不是 QQ 号），
-封禁/白名单等涉及用户 ID 的功能需使用对应 adapter 的 get_user_id() 值。
+注意：不同通道的用户标识不同——OneBot 是 QQ 号，官方 QQ C2C 是 user_openid，
+频道私信是频道用户 id；封禁/白名单等涉及用户 ID 的功能需按对应通道的
+get_user_id() 值配置。
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from datetime import datetime, timedelta
 from nonebot import get_bots, get_driver, logger, on_message, on_notice
 from nonebot.adapters.onebot.v11 import Bot, FriendAddNoticeEvent, MessageEvent
 from nonebot.adapters.qq import Bot as QQBot
-from nonebot.adapters.qq import C2CMessageCreateEvent
+from nonebot.adapters.qq import C2CMessageCreateEvent, DirectMessageCreateEvent
 from nonebot.rule import Rule, to_me
 
 from qqbot.actions import ActionResult
@@ -39,7 +40,6 @@ from .share import extract_share, to_song_info
 llm = LLMService(settings, actions.TOOL_HANDLERS)
 driver = get_driver()
 
-
 async def _is_private(event: MessageEvent) -> bool:
     return event.message_type == "private"
 
@@ -48,12 +48,17 @@ async def _is_qq_c2c(event) -> bool:
     return isinstance(event, C2CMessageCreateEvent)
 
 
+async def _is_qq_dms(event) -> bool:
+    return isinstance(event, DirectMessageCreateEvent)
+
+
 def _is_friend_add(event) -> bool:
     return isinstance(event, FriendAddNoticeEvent)
 
 
 onebot_matcher = on_message(priority=1, block=True, rule=to_me() & Rule(_is_private))
 qq_matcher = on_message(priority=1, block=True, rule=Rule(_is_qq_c2c))
+qq_dms_matcher = on_message(priority=1, block=True, rule=Rule(_is_qq_dms))
 friend_add_matcher = on_notice(priority=1, block=True, rule=Rule(_is_friend_add))
 
 _CONFIRM_WORDS = {"要", "好", "点", "可以", "同意", "嗯", "行", "OK", "ok", "Ok"}
@@ -84,6 +89,12 @@ async def _(bot: Bot, event: MessageEvent):
 @qq_matcher.handle()
 async def _(bot: QQBot, event: C2CMessageCreateEvent):
     channel = channels.from_qq_c2c(bot, event)
+    await dispatch(channel, event.get_plaintext(), None)
+
+
+@qq_dms_matcher.handle()
+async def _(bot: QQBot, event: DirectMessageCreateEvent):
+    channel = channels.from_qq_dms(bot, event)
     await dispatch(channel, event.get_plaintext(), None)
 
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
+from enum import Enum
 
 from nonebot import get_bots, get_driver, logger, on_message, on_notice
 from nonebot.adapters.onebot.v11 import Bot, FriendAddNoticeEvent, MessageEvent
@@ -367,9 +368,34 @@ def _seconds_until_next_send() -> float:
     return max((target - now).total_seconds(), 1.0)
 
 
-async def _send_private_to_all_bots(bots: dict, uid: str, text: str) -> bool:
+class SendOutcome(str, Enum):
+    OK = "ok"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
+_AUDIT_TIMEOUT = 10.0
+
+
+async def _audit_rejected(exc) -> bool:
+    """等待 QQ 消息审核结果：被拒返回 True；超时或异常按「已提交」处理。"""
+    from nonebot.adapters.qq.event import MessageAuditRejectEvent
+
+    try:
+        result = await exc.get_audit_result(timeout=_AUDIT_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.warning("等待消息审核结果超时（audit_id={}），按已提交处理", exc.audit_id)
+        return False
+    except Exception:
+        logger.exception("等待消息审核结果失败（audit_id={}），按已提交处理", exc.audit_id)
+        return False
+    return isinstance(result, MessageAuditRejectEvent)
+
+
+async def _send_private_to_all_bots(bots: dict, uid: str, text: str) -> SendOutcome:
     """按用户 ID 的平台前缀路由发送；同类 adapter 多 bot 时依次尝试，任一成功即止。"""
     from nonebot.adapters.qq import MessageSegment as QQMessageSegment
+    from nonebot.adapters.qq.exception import AuditException
 
     platform, parts = channels.split_uid(uid)
     for bot in bots.values():
@@ -382,10 +408,18 @@ async def _send_private_to_all_bots(bots: dict, uid: str, text: str) -> bool:
                 await bot.send_to_dms(guild_id=parts[0], message=QQMessageSegment.text(text))
             else:
                 continue
-            return True
+            return SendOutcome.OK
+        except AuditException as exc:
+            if await _audit_rejected(exc):
+                logger.warning("通知用户 {} 的消息审核被拒（audit_id={}）", uid, exc.audit_id)
+                return SendOutcome.REJECTED
+            logger.info(
+                "通知用户 {} 的消息已提交 QQ 审核（audit_id={}），通过后送达", uid, exc.audit_id
+            )
+            return SendOutcome.OK
         except Exception:
             logger.exception("通知用户 {} 失败（换下一个 bot 重试）", uid)
-    return False
+    return SendOutcome.FAILED
 
 
 _send_lock = asyncio.Lock()
@@ -405,18 +439,23 @@ async def _send_pending_notices() -> tuple[int, int, int] | None:
         failed_users = 0
         for notice in await notices.pending():
             failed: list[str] = []
+            rejected: list[str] = []
             for uid in notice["user_ids"]:
                 if await users.is_banned(uid):
                     continue
                 text = await llm.announce(
                     notice["name"], notice["artist"], format_date_cn(notice["selected_at"])
                 )
-                if await _send_private_to_all_bots(bots, uid, text):
+                outcome = await _send_private_to_all_bots(bots, uid, text)
+                if outcome is SendOutcome.OK:
                     sent_users += 1
+                    continue
+                if outcome is SendOutcome.REJECTED:
+                    rejected.append(uid)
                 else:
                     failed.append(uid)
-                    failed_users += 1
-            await notices.mark_attempt(notice["id"], failed)
+                failed_users += 1
+            await notices.mark_attempt(notice["id"], failed, rejected)
             processed += 1
         return processed, sent_users, failed_users
 

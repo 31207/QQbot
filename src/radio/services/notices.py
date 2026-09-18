@@ -1,7 +1,7 @@
 """歌曲选用通知缓存：web 写入，bot 定时发送。
 
 只重试上一轮失败的用户；累计尝试达到上限后放弃（标记已发送），
-避免每周重复打扰已收到通知的用户。
+避免每周重复打扰已收到通知的用户。审核被拒的用户单独记录，不再重试。
 """
 
 from __future__ import annotations
@@ -80,6 +80,8 @@ class NoticeService:
         for r in rows:
             all_ids = _load_ids(r.user_ids)
             failed = _load_ids(r.failed_user_ids)
+            rejected = set(_load_ids(r.rejected_user_ids))
+            retry = failed if r.attempts else all_ids
             out.append(
                 {
                     "id": r.id,
@@ -87,7 +89,7 @@ class NoticeService:
                     "name": r.name,
                     "artist": r.artist,
                     "selected_at": r.selected_at,
-                    "user_ids": failed if r.attempts else all_ids,
+                    "user_ids": [uid for uid in retry if uid not in rejected],
                 }
             )
         return out
@@ -116,16 +118,21 @@ class NoticeService:
         failed: list[dict] = []
         sent_count = 0
         for r in rows:
+            failed_ids = list(
+                dict.fromkeys([*_load_ids(r.failed_user_ids), *_load_ids(r.rejected_user_ids)])
+            )
             item = {
                 "id": r.id,
                 "name": r.name,
                 "artist": r.artist,
                 "selected_at": r.selected_at,
                 "attempts": r.attempts,
-                "failed_user_ids": _load_ids(r.failed_user_ids),
+                "failed_user_ids": failed_ids,
             }
             if not r.sent:
-                item["user_ids"] = _load_ids(r.failed_user_ids) if r.attempts else _load_ids(r.user_ids)
+                rejected = set(_load_ids(r.rejected_user_ids))
+                retry = _load_ids(r.failed_user_ids) if r.attempts else _load_ids(r.user_ids)
+                item["user_ids"] = [uid for uid in retry if uid not in rejected]
                 pending.append(item)
             elif item["failed_user_ids"]:
                 failed.append(item)
@@ -133,19 +140,33 @@ class NoticeService:
                 sent_count += 1
         return pending, sent_count, failed
 
-    async def mark_attempt(self, notice_id: int, failed_user_ids: list[str]) -> None:
-        """记录一轮发送结果：全部成功即完成；失败则只留失败用户，达上限后放弃。"""
+    async def mark_attempt(
+        self,
+        notice_id: int,
+        failed_user_ids: list[str],
+        rejected_user_ids: list[str] = (),
+    ) -> None:
+        """记录一轮发送结果：全部成功即完成；失败则只留失败用户，达上限后放弃。
+
+        审核被拒的用户单独记录，不再重试，仅在状态中显示为发送失败。
+        """
         async with self._factory()() as s:
             row = await s.get(SongSelectedNotice, notice_id)
             if row is None or row.sent:
                 return
             row.attempts += 1
             row.failed_user_ids = json.dumps(list(failed_user_ids), ensure_ascii=False)
+            rejected = list(
+                dict.fromkeys([*_load_ids(row.rejected_user_ids), *rejected_user_ids])
+            )
+            row.rejected_user_ids = json.dumps(rejected, ensure_ascii=False)
             if not failed_user_ids or row.attempts >= MAX_ATTEMPTS:
                 row.sent = True
                 row.sent_at = datetime.now()
-                if failed_user_ids:
+                if failed_user_ids or rejected:
                     logger.warning(
-                        "选中通知 #%s 放弃重试：%s 发送失败", notice_id, failed_user_ids
+                        "选中通知 #%s 放弃重试：%s 发送失败",
+                        notice_id,
+                        [*failed_user_ids, *rejected],
                     )
             await s.commit()

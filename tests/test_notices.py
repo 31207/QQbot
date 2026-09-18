@@ -49,6 +49,33 @@ async def test_retry_only_failed_users(session_factory, services):
     assert pending == [] and sent == 1 and failed == []
 
 
+async def test_rejected_user_not_retried_and_marked_failed(session_factory, services):
+    notices, row, info = await _make_notice(session_factory, services)
+    await notices.add(row["id"], info["name"], info["artist"])
+    notice_id = (await notices.pending())[0]["id"]
+
+    await notices.mark_attempt(notice_id, [], ["10002"])
+    assert await notices.pending_count() == 0
+    pending, sent, failed = await notices.status()
+    assert pending == [] and sent == 0
+    assert failed[0]["failed_user_ids"] == ["10002"]
+
+
+async def test_rejected_excluded_from_retry_while_failed_pending(session_factory, services):
+    notices, row, info = await _make_notice(session_factory, services)
+    await notices.add(row["id"], info["name"], info["artist"])
+    notice_id = (await notices.pending())[0]["id"]
+
+    await notices.mark_attempt(notice_id, ["10001"], ["10002"])
+    pending = await notices.pending()
+    assert pending[0]["user_ids"] == ["10001"]
+
+    await notices.mark_attempt(notice_id, [])
+    pending, sent, failed = await notices.status()
+    assert pending == [] and sent == 0
+    assert failed[0]["failed_user_ids"] == ["10002"]
+
+
 async def test_give_up_after_max_attempts(session_factory, services):
     notices, row, info = await _make_notice(session_factory, services)
     await notices.add(row["id"], info["name"], info["artist"])

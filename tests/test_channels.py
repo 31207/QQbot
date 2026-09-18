@@ -1,4 +1,7 @@
-from radio.plugins.qq_music_bot import _send_private_to_all_bots
+from nonebot.adapters.qq.event import MessageAuditPassEvent, MessageAuditRejectEvent
+from nonebot.adapters.qq.exception import AuditException
+
+from radio.plugins.qq_music_bot import SendOutcome, _send_private_to_all_bots
 from radio.plugins.qq_music_bot.channels import (
     C2C_PREFIX,
     DMS_PREFIX,
@@ -23,6 +26,11 @@ class FakeBot:
         self.calls.append(("send_to_dms", kwargs))
 
 
+class AuditedBot(FakeBot):
+    async def send_to_dms(self, **kwargs):
+        raise AuditException("audit-1")
+
+
 def test_encode_and_split_uid():
     assert encode_uid(ONEBOT_PREFIX, "123") == "onebot:123"
     assert encode_uid(C2C_PREFIX, "AbC") == "c2c:AbC"
@@ -36,8 +44,8 @@ def test_encode_and_split_uid():
 async def test_send_onebot_only_strips_prefix():
     onebot = FakeBot("OneBot V11")
     qq = FakeBot("QQ")
-    ok = await _send_private_to_all_bots({"a": onebot, "b": qq}, "onebot:123", "hi")
-    assert ok
+    outcome = await _send_private_to_all_bots({"a": onebot, "b": qq}, "onebot:123", "hi")
+    assert outcome is SendOutcome.OK
     assert onebot.calls == [("call_api", "send_private_msg", {"user_id": "123", "message": "hi"})]
     assert qq.calls == []
 
@@ -45,8 +53,8 @@ async def test_send_onebot_only_strips_prefix():
 async def test_send_c2c_uses_openid():
     onebot = FakeBot("OneBot V11")
     qq = FakeBot("QQ")
-    ok = await _send_private_to_all_bots({"a": onebot, "b": qq}, "c2c:OpenId", "hi")
-    assert ok
+    outcome = await _send_private_to_all_bots({"a": onebot, "b": qq}, "c2c:OpenId", "hi")
+    assert outcome is SendOutcome.OK
     assert onebot.calls == []
     assert len(qq.calls) == 1
     method, kwargs = qq.calls[0]
@@ -56,20 +64,47 @@ async def test_send_c2c_uses_openid():
 
 async def test_send_dms_uses_guild_id():
     qq = FakeBot("QQ")
-    ok = await _send_private_to_all_bots({"b": qq}, "dms:987654:321", "hi")
-    assert ok
+    outcome = await _send_private_to_all_bots({"b": qq}, "dms:987654:321", "hi")
+    assert outcome is SendOutcome.OK
     method, kwargs = qq.calls[0]
     assert method == "send_to_dms"
     assert kwargs["guild_id"] == "987654"
 
 
-async def test_send_unknown_prefix_returns_false():
+async def test_send_unknown_prefix_fails():
     onebot = FakeBot("OneBot V11")
     qq = FakeBot("QQ")
-    assert not await _send_private_to_all_bots({"a": onebot, "b": qq}, "1692038362", "hi")
-    assert not await _send_private_to_all_bots({"a": onebot, "b": qq}, "wechat:1", "hi")
+    bots = {"a": onebot, "b": qq}
+    assert await _send_private_to_all_bots(bots, "1692038362", "hi") is SendOutcome.FAILED
+    assert await _send_private_to_all_bots(bots, "wechat:1", "hi") is SendOutcome.FAILED
     assert onebot.calls == []
     assert qq.calls == []
+
+
+async def test_send_audit_pass_counts_as_sent(monkeypatch):
+    async def pass_result(self, timeout=None):
+        return MessageAuditPassEvent.model_construct()
+
+    monkeypatch.setattr(AuditException, "get_audit_result", pass_result)
+    healthy = FakeBot("QQ")
+    outcome = await _send_private_to_all_bots(
+        {"a": AuditedBot("QQ"), "b": healthy}, "dms:1:2", "hi"
+    )
+    assert outcome is SendOutcome.OK
+    assert healthy.calls == []
+
+
+async def test_send_audit_reject_marks_failed(monkeypatch):
+    async def reject_result(self, timeout=None):
+        return MessageAuditRejectEvent.model_construct()
+
+    monkeypatch.setattr(AuditException, "get_audit_result", reject_result)
+    healthy = FakeBot("QQ")
+    outcome = await _send_private_to_all_bots(
+        {"a": AuditedBot("QQ"), "b": healthy}, "dms:1:2", "hi"
+    )
+    assert outcome is SendOutcome.REJECTED
+    assert healthy.calls == []
 
 
 async def test_send_retries_next_same_type_bot():
@@ -79,6 +114,6 @@ async def test_send_retries_next_same_type_bot():
 
     failing = FailingBot("QQ")
     healthy = FakeBot("QQ")
-    ok = await _send_private_to_all_bots({"a": failing, "b": healthy}, "c2c:OpenId", "hi")
-    assert ok
+    outcome = await _send_private_to_all_bots({"a": failing, "b": healthy}, "c2c:OpenId", "hi")
+    assert outcome is SendOutcome.OK
     assert healthy.calls[0][1]["openid"] == "OpenId"

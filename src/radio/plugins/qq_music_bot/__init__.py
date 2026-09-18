@@ -395,7 +395,7 @@ async def _audit_rejected(exc) -> bool:
 async def _send_private_to_all_bots(bots: dict, uid: str, text: str) -> SendOutcome:
     """按用户 ID 的平台前缀路由发送；同类 adapter 多 bot 时依次尝试，任一成功即止。"""
     from nonebot.adapters.qq import MessageSegment as QQMessageSegment
-    from nonebot.adapters.qq.exception import AuditException
+    from nonebot.adapters.qq.exception import ApiNotAvailable, AuditException
 
     platform, parts = channels.split_uid(uid)
     for bot in bots.values():
@@ -417,6 +417,12 @@ async def _send_private_to_all_bots(bots: dict, uid: str, text: str) -> SendOutc
                 "通知用户 {} 的消息已提交 QQ 审核（audit_id={}），通过后送达", uid, exc.audit_id
             )
             return SendOutcome.OK
+        except ApiNotAvailable:
+            logger.warning(
+                "通知用户 {} 失败：QQ 接口返回 404/405，adapter 未返回具体原因"
+                "（常见为私信主动消息限频）",
+                uid,
+            )
         except Exception:
             logger.exception("通知用户 {} 失败（换下一个 bot 重试）", uid)
     return SendOutcome.FAILED

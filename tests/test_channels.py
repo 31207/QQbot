@@ -1,5 +1,5 @@
 from nonebot.adapters.qq.event import MessageAuditPassEvent, MessageAuditRejectEvent
-from nonebot.adapters.qq.exception import AuditException
+from nonebot.adapters.qq.exception import ApiNotAvailable, AuditException
 
 from radio.plugins.qq_music_bot import SendOutcome, _send_private_to_all_bots
 from radio.plugins.qq_music_bot.channels import (
@@ -29,6 +29,11 @@ class FakeBot:
 class AuditedBot(FakeBot):
     async def send_to_dms(self, **kwargs):
         raise AuditException("audit-1")
+
+
+class UnavailableBot(FakeBot):
+    async def send_to_dms(self, **kwargs):
+        raise ApiNotAvailable()
 
 
 def test_encode_and_split_uid():
@@ -105,6 +110,19 @@ async def test_send_audit_reject_marks_failed(monkeypatch):
     )
     assert outcome is SendOutcome.REJECTED
     assert healthy.calls == []
+
+
+async def test_send_api_not_available_fails_over():
+    healthy = FakeBot("QQ")
+    outcome = await _send_private_to_all_bots(
+        {"a": UnavailableBot("QQ"), "b": healthy}, "dms:1:2", "hi"
+    )
+    assert outcome is SendOutcome.OK
+    assert healthy.calls
+    assert (
+        await _send_private_to_all_bots({"a": UnavailableBot("QQ")}, "dms:1:2", "hi")
+        is SendOutcome.FAILED
+    )
 
 
 async def test_send_retries_next_same_type_bot():

@@ -327,7 +327,7 @@ class LLMService:
 
     async def announce(self, name: str, artist: str, date_cn: str) -> str:
         """歌曲被选用的通知文案（LLM 生成，失败用兜底）。"""
-        fallback = f"你点的《{name} - {artist}》在{date_cn}被选中了！记得去听哦～"
+        fallback = f"你点的《{name} - {artist}》在{date_cn}被选中了！"
         if not self.enabled:
             return fallback
         messages = [

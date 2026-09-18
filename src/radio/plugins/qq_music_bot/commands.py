@@ -39,6 +39,7 @@ class CommandKind(str, Enum):
     MY_SONGS = "my_songs"
     REMAINING = "remaining"
     MY_ID = "my_id"
+    PROFILE = "profile"
     REMARK = "remark"
     HELP = "help"
     BAN_USER = "ban_user"
@@ -137,6 +138,9 @@ def parse_command(text: str) -> Command | None:
 
     if c.lower() in ("id", "我的id", "用户id", "我的用户id", "查询id"):
         return Command(CommandKind.MY_ID)
+
+    if c in ("我的信息", "个人信息", "我的资料", "我的状态"):
+        return Command(CommandKind.PROFILE)
 
     if c.startswith("帮助") or c.startswith("菜单"):
         return Command(CommandKind.HELP)

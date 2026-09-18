@@ -50,6 +50,7 @@ FUNCTION_LIST = (
     "· 剩余次数：查今天还能点几首\n"
     "· 备注 编号 内容：给已点歌曲加备注\n"
     "· ID：查看自己的用户ID\n"
+    "· 我的信息：查看时间/ID/身份/点歌次数\n"
     "· 帮助：查看功能菜单"
 )
 
@@ -89,6 +90,15 @@ def format_records(records: list[dict]) -> str:
 
 def format_remaining(used: int, limit: int, period: str = "本周") -> str:
     return f"{period}已点 {used}/{limit} 首，剩余可点 {max(0, limit - used)} 首。"
+
+
+def format_profile(now, uid: str, role: str, used: int, limit: int, period: str) -> str:
+    return (
+        f"时间：{now.year}年{format_date_cn(now)} {now:%H:%M}\n"
+        f"用户ID：{uid}\n"
+        f"身份：{role}\n"
+        f"{period}已点歌：{used}/{limit} 首，剩余 {max(0, limit - used)} 首"
+    )
 
 
 def format_notice_status(pending: list[dict], sent_count: int, failed: list[dict]) -> str:

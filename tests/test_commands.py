@@ -65,6 +65,11 @@ def test_my_id():
         assert parse_command(text).kind == CommandKind.MY_ID
 
 
+def test_profile():
+    for text in ("我的信息", "个人信息", "我的资料", "我的状态"):
+        assert parse_command(text).kind == CommandKind.PROFILE
+
+
 def test_help():
     assert parse_command("帮助").kind == CommandKind.HELP
     assert parse_command("菜单").kind == CommandKind.HELP

@@ -107,6 +107,14 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "my_profile",
+            "description": "查看自己的账号信息（时间、用户ID、身份、点歌次数）。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "add_remark",
             "description": "为我的某首点歌设置或清除备注。",
             "parameters": {

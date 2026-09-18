@@ -34,7 +34,7 @@ qq-bot/
 ├── bot.py                        # NoneBot2 入口
 ├── pyproject.toml                # 依赖 + nonebot 插件配置（src 布局）
 ├── .env / .env.prod              # 驱动/端口/插件配置
-├── src/qqbot/
+├── src/radio/
 │   ├── config.py                 # 统一配置（唯一解析点）
 │   ├── state.py                  # 进程内会话状态（TTL 自动回收）
 │   ├── render.py                 # Pillow 图片渲染
@@ -51,7 +51,7 @@ qq-bot/
 
 ## 快速开始（本机）
 
-1. 安装依赖（**editable 安装项目本身**，让 `import qqbot` 在 bot / 测试里都可用）：
+1. 安装依赖（**editable 安装项目本身**，让 `import radio` 在 bot / 测试里都可用）：
    ```powershell
    cd D:\qq-bot
    python -m venv .venv

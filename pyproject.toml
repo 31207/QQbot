@@ -32,7 +32,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.nonebot]
-plugin_dirs = ["src/qqbot/plugins"]
+plugin_dirs = ["src/radio/plugins"]
 builtin_plugins = []
 
 [tool.nonebot.adapters]

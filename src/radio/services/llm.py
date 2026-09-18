@@ -91,6 +91,14 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "my_selections",
+            "description": "查看我点过的歌里已被广播站选用的歌曲（选用记录）。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "remaining_quota",
             "description": "查询点歌剩余次数。",
             "parameters": {"type": "object", "properties": {}},
@@ -323,29 +331,6 @@ class LLMService:
             return welcome or fallback
         except Exception:
             logger.exception("LLM 生成欢迎语失败")
-            return fallback
-
-    async def announce(self, name: str, artist: str, date_cn: str) -> str:
-        """歌曲被选用的通知文案（LLM 生成，失败用兜底）。"""
-        fallback = f"你点的《{name} - {artist}》在{date_cn}被选中了！"
-        if not self.enabled:
-            return fallback
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"校园广播站的点歌歌曲《{name}》- {artist} 在{date_cn}被选中播放了。\n"
-                    "请用你（咪）傲娇可爱的口吻，替广播站通知这位「人」一句："
-                    "他点过的这首歌被选中了。一两句话即可，亲切一点，不要复述这些字段。"
-                ),
-            },
-        ]
-        try:
-            text = await self._chat(messages)
-            return text or fallback
-        except Exception:
-            logger.exception("LLM 生成选中通知失败")
             return fallback
 
     async def error_hint(self) -> str:

@@ -37,6 +37,7 @@ class CommandKind(str, Enum):
     SEARCH_EXIT = "search_exit"
     ORDER = "order"
     MY_SONGS = "my_songs"
+    MY_SELECTIONS = "my_selections"
     REMAINING = "remaining"
     MY_ID = "my_id"
     PROFILE = "profile"
@@ -48,8 +49,6 @@ class CommandKind(str, Enum):
     BAN_SONG = "ban_song"
     UNBAN_SONG = "unban_song"
     RESET_QUOTA = "reset_quota"
-    NOTICE_STATUS = "notice_status"
-    NOTICE_SEND = "notice_send"
 
 
 @dataclass(frozen=True)
@@ -66,8 +65,6 @@ ADMIN_KINDS = frozenset(
         CommandKind.BAN_SONG,
         CommandKind.UNBAN_SONG,
         CommandKind.RESET_QUOTA,
-        CommandKind.NOTICE_STATUS,
-        CommandKind.NOTICE_SEND,
     }
 )
 
@@ -125,13 +122,11 @@ def parse_command(text: str) -> Command | None:
     if c in ("重置点歌次数", "重置", "清空点歌次数"):
         return Command(CommandKind.RESET_QUOTA)
 
-    if c in ("通知状态", "通知情况", "通知列表"):
-        return Command(CommandKind.NOTICE_STATUS)
-    if c in ("发送通知", "通知发送", "立即发送通知"):
-        return Command(CommandKind.NOTICE_SEND)
-
     if c in ("我的歌单", "点歌记录", "歌单", "查看我的点歌记录", "我的点歌记录"):
         return Command(CommandKind.MY_SONGS)
+
+    if c in ("选用记录", "我的选用", "我的选用记录", "已选歌曲", "查看选用记录"):
+        return Command(CommandKind.MY_SELECTIONS)
 
     if c in ("剩余次数", "查询剩余点歌次数", "剩余点歌次数"):
         return Command(CommandKind.REMAINING)

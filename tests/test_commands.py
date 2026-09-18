@@ -46,11 +46,14 @@ def test_admin_commands():
     assert parse_command("重置").kind == CommandKind.RESET_QUOTA
 
 
-def test_notice_commands():
-    for text in ("通知状态", "通知情况", "通知列表"):
-        assert parse_command(text).kind == CommandKind.NOTICE_STATUS
-    for text in ("发送通知", "通知发送", "立即发送通知"):
-        assert parse_command(text).kind == CommandKind.NOTICE_SEND
+def test_selection_commands():
+    for text in ("选用记录", "我的选用", "我的选用记录", "已选歌曲", "查看选用记录"):
+        assert parse_command(text).kind == CommandKind.MY_SELECTIONS
+
+
+def test_removed_notice_commands():
+    for text in ("通知状态", "通知情况", "发送通知", "立即发送通知"):
+        assert parse_command(text) is None
 
 
 def test_list_and_remaining():

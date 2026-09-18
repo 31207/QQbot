@@ -6,19 +6,19 @@
 from __future__ import annotations
 
 from radio.config import settings
-from radio.services.notices import NoticeService
 from radio.services.permissions import Permissions
 from radio.services.requests import RequestService
 from radio.services.search import MusicAPI, SearchService
+from radio.services.selections import SelectionService
 from radio.services.songs import SongService
 from radio.services.users import UserService
 from radio.state import StateStore
 
 __all__ = [
-    "notices",
     "permissions",
     "requests",
     "search",
+    "selections",
     "settings",
     "songs",
     "state",
@@ -41,4 +41,4 @@ songs = SongService()
 users = UserService()
 requests = RequestService(songs, users, permissions)
 search = SearchService(MusicAPI(settings.music_api_base), state, settings.page_size)
-notices = NoticeService()
+selections = SelectionService()

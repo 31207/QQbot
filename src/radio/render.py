@@ -395,6 +395,80 @@ def render_records(
     return buf.getvalue()
 
 
+def render_selections(
+    records: list[dict],
+    covers: dict[str, Image.Image | None],
+    total: int,
+) -> bytes:
+    """把「选用记录」画成 PNG。records 需含 name/artist/album/cover/source/song_id/selected_at。"""
+    height = HEADER_H + len(records) * RECORD_ROW_H + FOOTER_H
+    canvas = Image.new("RGB", (WIDTH, height), BG)
+    d = ImageDraw.Draw(canvas)
+
+    f_title = _font(34, bold=True)
+    f_sub = _font(22)
+    f_index = _font(22, bold=True)
+    f_name = _font(26, bold=True)
+    f_meta = _font(21)
+    f_right = _font(20)
+    f_right_bold = _font(20, bold=True)
+    f_footer = _font(20)
+
+    d.text((PAD, 20), "选用记录", font=f_title, fill=TEXT_MAIN)
+    sub = f"共 {total} 首    生成于 {datetime.now():%Y-%m-%d %H:%M}"
+    d.text((PAD, 78), sub, font=f_sub, fill=TEXT_SUB)
+    d.line((PAD, HEADER_H - 1, WIDTH - PAD, HEADER_H - 1), fill=DIVIDER, width=2)
+
+    index_x = PAD
+    cover_x = PAD + 46
+    text_x = cover_x + COVER_SIZE + 18
+    right_x = WIDTH - PAD
+
+    for i, r in enumerate(records):
+        y0 = HEADER_H + i * RECORD_ROW_H
+        d.rectangle(
+            (0, y0, WIDTH, y0 + RECORD_ROW_H), fill=ROW_ALT if i % 2 else ROW_BG
+        )
+
+        d.text((index_x, y0 + RECORD_ROW_H / 2 - 14), f"{i + 1:02d}",
+               font=f_index, fill=TEXT_SUB)
+
+        _draw_cover(canvas, (cover_x, y0 + (RECORD_ROW_H - COVER_SIZE) // 2),
+                    covers.get(r.get("cover") or ""))
+
+        name = r.get("name") or "未知歌曲"
+        artist = r.get("artist") or "未知歌手"
+        album = r.get("album") or ""
+        meta = f"{artist} · {album}" if album else artist
+        max_text_w = right_x - text_x - 150
+
+        d.text((text_x, y0 + 24), _truncate(d, name, f_name, max_text_w),
+               font=f_name, fill=TEXT_MAIN)
+        d.text((text_x, y0 + 58), _truncate(d, meta, f_meta, max_text_w),
+               font=f_meta, fill=TEXT_SUB)
+
+        source = r.get("source") or ""
+        d.text((right_x, y0 + 12), SOURCE_NAMES.get(source, source),
+               font=f_right_bold, fill=SOURCE_COLORS.get(source, ACCENT),
+               anchor="ra")
+        d.text((right_x, y0 + 40), format_short_time(r.get("selected_at")),
+               font=f_right, fill=TEXT_SUB, anchor="ra")
+        d.text((right_x, y0 + 68), f"[编号{r.get('song_id')}]",
+               font=f_right, fill=TEXT_SUB, anchor="ra")
+
+        if i < len(records) - 1:
+            d.line((PAD, y0 + RECORD_ROW_H - 1, WIDTH - PAD, y0 + RECORD_ROW_H - 1),
+                   fill=DIVIDER, width=1)
+
+    footer = "广播站选用后，你点的歌会出现在这里"
+    fy = HEADER_H + len(records) * RECORD_ROW_H + (FOOTER_H - 24) / 2
+    d.text((WIDTH / 2, fy), footer, font=f_footer, fill=TEXT_SUB, anchor="ma")
+
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------- 播放历史卡片图
 
 HISTORY_CARD_H = 132

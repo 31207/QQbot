@@ -1,7 +1,3 @@
-from nonebot.adapters.qq.event import MessageAuditPassEvent, MessageAuditRejectEvent
-from nonebot.adapters.qq.exception import ApiNotAvailable, AuditException
-
-from radio.plugins.qq_music_bot import SendOutcome, _send_private_to_all_bots
 from radio.plugins.qq_music_bot.channels import (
     C2C_PREFIX,
     DMS_PREFIX,
@@ -9,31 +5,6 @@ from radio.plugins.qq_music_bot.channels import (
     encode_uid,
     split_uid,
 )
-
-
-class FakeBot:
-    def __init__(self, type_: str):
-        self.type = type_
-        self.calls: list = []
-
-    async def call_api(self, api, **kwargs):
-        self.calls.append(("call_api", api, kwargs))
-
-    async def send_to_c2c(self, **kwargs):
-        self.calls.append(("send_to_c2c", kwargs))
-
-    async def send_to_dms(self, **kwargs):
-        self.calls.append(("send_to_dms", kwargs))
-
-
-class AuditedBot(FakeBot):
-    async def send_to_dms(self, **kwargs):
-        raise AuditException("audit-1")
-
-
-class UnavailableBot(FakeBot):
-    async def send_to_dms(self, **kwargs):
-        raise ApiNotAvailable()
 
 
 def test_encode_and_split_uid():
@@ -44,94 +15,3 @@ def test_encode_and_split_uid():
     assert split_uid("c2c:AbC") == ("c2c", ["AbC"])
     assert split_uid("dms:g1:u2") == ("dms", ["g1", "u2"])
     assert split_uid("legacy-id") == ("", ["legacy-id"])
-
-
-async def test_send_onebot_only_strips_prefix():
-    onebot = FakeBot("OneBot V11")
-    qq = FakeBot("QQ")
-    outcome = await _send_private_to_all_bots({"a": onebot, "b": qq}, "onebot:123", "hi")
-    assert outcome is SendOutcome.OK
-    assert onebot.calls == [("call_api", "send_private_msg", {"user_id": "123", "message": "hi"})]
-    assert qq.calls == []
-
-
-async def test_send_c2c_uses_openid():
-    onebot = FakeBot("OneBot V11")
-    qq = FakeBot("QQ")
-    outcome = await _send_private_to_all_bots({"a": onebot, "b": qq}, "c2c:OpenId", "hi")
-    assert outcome is SendOutcome.OK
-    assert onebot.calls == []
-    assert len(qq.calls) == 1
-    method, kwargs = qq.calls[0]
-    assert method == "send_to_c2c"
-    assert kwargs["openid"] == "OpenId"
-
-
-async def test_send_dms_uses_guild_id():
-    qq = FakeBot("QQ")
-    outcome = await _send_private_to_all_bots({"b": qq}, "dms:987654:321", "hi")
-    assert outcome is SendOutcome.OK
-    method, kwargs = qq.calls[0]
-    assert method == "send_to_dms"
-    assert kwargs["guild_id"] == "987654"
-
-
-async def test_send_unknown_prefix_fails():
-    onebot = FakeBot("OneBot V11")
-    qq = FakeBot("QQ")
-    bots = {"a": onebot, "b": qq}
-    assert await _send_private_to_all_bots(bots, "1692038362", "hi") is SendOutcome.FAILED
-    assert await _send_private_to_all_bots(bots, "wechat:1", "hi") is SendOutcome.FAILED
-    assert onebot.calls == []
-    assert qq.calls == []
-
-
-async def test_send_audit_pass_counts_as_sent(monkeypatch):
-    async def pass_result(self, timeout=None):
-        return MessageAuditPassEvent.model_construct()
-
-    monkeypatch.setattr(AuditException, "get_audit_result", pass_result)
-    healthy = FakeBot("QQ")
-    outcome = await _send_private_to_all_bots(
-        {"a": AuditedBot("QQ"), "b": healthy}, "dms:1:2", "hi"
-    )
-    assert outcome is SendOutcome.OK
-    assert healthy.calls == []
-
-
-async def test_send_audit_reject_marks_failed(monkeypatch):
-    async def reject_result(self, timeout=None):
-        return MessageAuditRejectEvent.model_construct()
-
-    monkeypatch.setattr(AuditException, "get_audit_result", reject_result)
-    healthy = FakeBot("QQ")
-    outcome = await _send_private_to_all_bots(
-        {"a": AuditedBot("QQ"), "b": healthy}, "dms:1:2", "hi"
-    )
-    assert outcome is SendOutcome.REJECTED
-    assert healthy.calls == []
-
-
-async def test_send_api_not_available_fails_over():
-    healthy = FakeBot("QQ")
-    outcome = await _send_private_to_all_bots(
-        {"a": UnavailableBot("QQ"), "b": healthy}, "dms:1:2", "hi"
-    )
-    assert outcome is SendOutcome.OK
-    assert healthy.calls
-    assert (
-        await _send_private_to_all_bots({"a": UnavailableBot("QQ")}, "dms:1:2", "hi")
-        is SendOutcome.FAILED
-    )
-
-
-async def test_send_retries_next_same_type_bot():
-    class FailingBot(FakeBot):
-        async def send_to_c2c(self, **kwargs):
-            raise RuntimeError("boom")
-
-    failing = FailingBot("QQ")
-    healthy = FakeBot("QQ")
-    outcome = await _send_private_to_all_bots({"a": failing, "b": healthy}, "c2c:OpenId", "hi")
-    assert outcome is SendOutcome.OK
-    assert healthy.calls[0][1]["openid"] == "OpenId"

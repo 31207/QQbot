@@ -2,26 +2,24 @@
 
 消息处理顺序（业务分发与 adapter 无关，收发统一走 Channel）：
 1. 歌曲分享卡片（仅 OneBot 有 music/json/xml 段）→ 精确搜索 + 待确认点歌；
-2. 管理指令（封禁/解封/封禁列表/重置/禁歌/通知）——先于封禁拦截，保证管理员可自解封；
+2. 管理指令（封禁/解封/封禁列表/重置/禁歌）——先于封禁拦截，保证管理员可自解封；
 3. 封禁拦截；
 4. 状态流转（帮助菜单选号 / 一次性点歌·搜索模式 / 分享确认）；
 5. 确定性指令 → 动作层执行（LLM 开启时用其措辞，失败自动回退原文）；
 6. LLM 兜底处理自然语言；未开启 LLM 时非指令消息静默忽略。
 
-后台任务：会话状态回收（防内存泄漏）+ 每周五 19:00 歌曲选中通知（只重试失败用户）。
+后台任务：会话状态回收（防内存泄漏）。
 
-注意：不同通道的用户标识不同——OneBot 是 QQ 号，官方 QQ C2C 是 user_openid，
-频道私信是频道用户 id；封禁/白名单等涉及用户 ID 的功能需按对应通道的
-get_user_id() 值配置。
+注意：不同通道的用户标识不同，业务 ID 统一带平台前缀
+（onebot:QQ号 / c2c:user_openid / dms:guild_id:频道用户id）；
+封禁、白名单等涉及用户 ID 的功能需按对应通道的带前缀 ID 配置（「ID」指令可查看）。
 """
 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
-from enum import Enum
 
-from nonebot import get_bots, get_driver, logger, on_message, on_notice
+from nonebot import get_driver, logger, on_message, on_notice
 from nonebot.adapters.onebot.v11 import Bot, FriendAddNoticeEvent, MessageEvent
 from nonebot.adapters.qq import Bot as QQBot
 from nonebot.adapters.qq import C2CMessageCreateEvent, DirectMessageCreateEvent
@@ -29,9 +27,9 @@ from nonebot.rule import Rule, to_me
 
 from radio.actions import ActionResult
 from radio.db import dispose_engine, init_db
-from radio.runtime import notices, permissions, requests, search, settings, state, users
+from radio.runtime import requests, settings, state, users
 from radio.services.llm import LLMService
-from radio.util import compact, format_date_cn
+from radio.util import compact
 
 from . import actions, channels, texts
 from .channels import Channel
@@ -257,6 +255,10 @@ async def run_command(channel: Channel, uid: str, user_state, cmd: Command, raw_
         await send_result(channel, await actions.action_remaining(uid), phrase=raw_text)
         return
 
+    if kind == CommandKind.MY_SELECTIONS:
+        await send_result(channel, await actions.action_my_selections(uid), phrase=raw_text)
+        return
+
     if kind == CommandKind.MY_ID:
         await send_result(channel, await actions.action_my_id(uid))
         return
@@ -296,30 +298,9 @@ async def run_admin_command(channel: Channel, uid: str, cmd: Command) -> None:
         result = await actions.action_ban_song(uid, cmd.args[0])
     elif kind == CommandKind.UNBAN_SONG:
         result = await actions.action_unban_song(uid, cmd.args[0])
-    elif kind == CommandKind.NOTICE_STATUS:
-        result = await actions.action_notice_status(uid)
-    elif kind == CommandKind.NOTICE_SEND:
-        await run_notice_send(channel, uid)
-        return
     else:  # RESET_QUOTA
         result = await actions.action_reset_quota(uid)
     await send_result(channel, result)
-
-
-async def run_notice_send(channel: Channel, uid: str) -> None:
-    if not permissions.is_admin(uid):
-        await channel.send_text("无权限：仅管理员可手动发送通知")
-        return
-    await channel.send_text("正在发送待处理通知，请稍候…")
-    stats = await _send_pending_notices()
-    if stats is None:
-        await channel.send_text("当前没有已连接的 bot，无法发送，请稍后再试")
-        return
-    processed, sent_users, failed_users = stats
-    await channel.send_text(
-        f"发送完成：处理 {processed} 条通知，成功通知 {sent_users} 人，失败 {failed_users} 人。"
-        "可用「通知状态」查看详情。"
-    )
 
 
 async def llm_fallback(channel: Channel, uid: str, text: str) -> None:
@@ -353,141 +334,6 @@ async def _(bot: Bot, event: FriendAddNoticeEvent):
         logger.exception("发送新好友欢迎词失败")
 
 
-# ---------------------------------------------------------------- 选中通知（每周五定时）
-
-
-def _seconds_until_next_send() -> float:
-    now = datetime.now()
-    target = now.replace(
-        hour=settings.notify_hour, minute=settings.notify_minute, second=0, microsecond=0
-    )
-    days_ahead = (settings.notify_weekday - now.weekday()) % 7
-    if days_ahead == 0 and now >= target:
-        days_ahead = 7
-    target += timedelta(days=days_ahead)
-    return max((target - now).total_seconds(), 1.0)
-
-
-class SendOutcome(str, Enum):
-    OK = "ok"
-    REJECTED = "rejected"
-    FAILED = "failed"
-
-
-_AUDIT_TIMEOUT = 10.0
-
-
-async def _audit_rejected(exc) -> bool:
-    """等待 QQ 消息审核结果：被拒返回 True；超时或异常按「已提交」处理。"""
-    from nonebot.adapters.qq.event import MessageAuditRejectEvent
-
-    try:
-        result = await exc.get_audit_result(timeout=_AUDIT_TIMEOUT)
-    except asyncio.TimeoutError:
-        logger.warning("等待消息审核结果超时（audit_id={}），按已提交处理", exc.audit_id)
-        return False
-    except Exception:
-        logger.exception("等待消息审核结果失败（audit_id={}），按已提交处理", exc.audit_id)
-        return False
-    return isinstance(result, MessageAuditRejectEvent)
-
-
-async def _send_private_to_all_bots(bots: dict, uid: str, text: str) -> SendOutcome:
-    """按用户 ID 的平台前缀路由发送；同类 adapter 多 bot 时依次尝试，任一成功即止。"""
-    from nonebot.adapters.qq import MessageSegment as QQMessageSegment
-    from nonebot.adapters.qq.exception import ApiNotAvailable, AuditException
-
-    platform, parts = channels.split_uid(uid)
-    for bot in bots.values():
-        try:
-            if platform == channels.ONEBOT_PREFIX and bot.type == "OneBot V11":
-                await bot.call_api("send_private_msg", user_id=parts[0], message=text)
-            elif platform == channels.C2C_PREFIX and bot.type == "QQ":
-                await bot.send_to_c2c(openid=parts[0], message=QQMessageSegment.text(text))
-            elif platform == channels.DMS_PREFIX and bot.type == "QQ":
-                await bot.send_to_dms(guild_id=parts[0], message=QQMessageSegment.text(text))
-            else:
-                continue
-            return SendOutcome.OK
-        except AuditException as exc:
-            if await _audit_rejected(exc):
-                logger.warning("通知用户 {} 的消息审核被拒（audit_id={}）", uid, exc.audit_id)
-                return SendOutcome.REJECTED
-            logger.info(
-                "通知用户 {} 的消息已提交 QQ 审核（audit_id={}），通过后送达", uid, exc.audit_id
-            )
-            return SendOutcome.OK
-        except ApiNotAvailable:
-            logger.warning(
-                "通知用户 {} 失败：QQ 接口返回 404/405，adapter 未返回具体原因"
-                "（常见为私信主动消息限频）",
-                uid,
-            )
-        except Exception:
-            logger.exception("通知用户 {} 失败（换下一个 bot 重试）", uid)
-    return SendOutcome.FAILED
-
-
-_send_lock = asyncio.Lock()
-
-
-async def _send_pending_notices() -> tuple[int, int, int] | None:
-    """发送所有待处理通知；返回 (处理条数, 成功人数, 失败人数)，无 bot 连接返回 None。
-
-    与定时循环共用同一把进程内锁，避免手动触发与周五定时窗口并发导致重复发送。
-    """
-    bots = get_bots()
-    if not bots:
-        return None
-    async with _send_lock:
-        processed = 0
-        sent_users = 0
-        failed_users = 0
-        for notice in await notices.pending():
-            failed: list[str] = []
-            rejected: list[str] = []
-            for uid in notice["user_ids"]:
-                if await users.is_banned(uid):
-                    continue
-                text = await llm.announce(
-                    notice["name"], notice["artist"], format_date_cn(notice["selected_at"])
-                )
-                outcome = await _send_private_to_all_bots(bots, uid, text)
-                if outcome is SendOutcome.OK:
-                    sent_users += 1
-                    continue
-                if outcome is SendOutcome.REJECTED:
-                    rejected.append(uid)
-                else:
-                    failed.append(uid)
-                failed_users += 1
-            await notices.mark_attempt(notice["id"], failed, rejected)
-            processed += 1
-        return processed, sent_users, failed_users
-
-
-async def _notify_loop() -> None:
-    last_week: str | None = None
-    while True:
-        now = datetime.now()
-        week_key_ = f"{now.isocalendar().year}-W{now.isocalendar().week}"
-        in_window = (
-            now.weekday() == settings.notify_weekday
-            and (
-                now.hour > settings.notify_hour
-                or (now.hour == settings.notify_hour and now.minute >= settings.notify_minute)
-            )
-        )
-        if in_window and last_week != week_key_:
-            try:
-                await _send_pending_notices()
-                last_week = week_key_
-            except Exception:
-                logger.exception("发送歌曲选中通知失败")
-        delay = min(float(settings.notify_interval), _seconds_until_next_send())
-        await asyncio.sleep(max(delay, 1.0))
-
-
 # ---------------------------------------------------------------- 后台维护（防内存泄漏）
 
 
@@ -507,7 +353,6 @@ _tasks: list[asyncio.Task] = []
 @driver.on_startup
 async def _on_startup() -> None:
     await init_db()
-    _tasks.append(asyncio.create_task(_notify_loop()))
     _tasks.append(asyncio.create_task(_maintenance_loop()))
 
 

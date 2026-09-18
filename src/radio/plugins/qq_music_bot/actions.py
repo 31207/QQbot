@@ -12,8 +12,8 @@ from typing import Callable
 from nonebot import logger
 
 from radio.actions import ActionResult
-from radio.render import SOURCE_NAMES, render_page, render_records
-from radio.runtime import notices, permissions, requests, search, settings, songs, state, users
+from radio.render import SOURCE_NAMES, render_page, render_records, render_selections
+from radio.runtime import permissions, requests, search, selections, settings, songs, state, users
 from radio.services import MusicSearchError, fetch_cover
 from radio.util import beijing_now
 
@@ -135,6 +135,17 @@ async def action_my_songs(uid: str) -> ActionResult:
     return ActionResult(f"已生成「我的歌单」图片（共 {len(records)} 条点歌记录），图片已发送。", img)
 
 
+async def action_my_selections(uid: str) -> ActionResult:
+    records = await selections.list_for_user(uid, settings.record_limit)
+    if not records:
+        return ActionResult("你点过的歌还没有被选用，广播站选用后会出现在这里。")
+    covers = await _fetch_covers(records)
+    img = await asyncio.to_thread(render_selections, records, covers, len(records))
+    if img is None:
+        return ActionResult(texts.format_selections(records))
+    return ActionResult(f"已生成「选用记录」图片（共 {len(records)} 首），图片已发送。", img)
+
+
 async def action_remaining(uid: str) -> ActionResult:
     period, limit = permissions.role_limit(uid)
     used = await requests.count(uid, period)
@@ -210,13 +221,6 @@ async def action_reset_quota(uid: str) -> ActionResult:
     return ActionResult(f"已重置所有人的点歌次数（清零 {n} 条记录）")
 
 
-async def action_notice_status(uid: str) -> ActionResult:
-    if not permissions.is_admin(uid):
-        return ActionResult("无权限：仅管理员可查看通知发送情况")
-    pending, sent_count, failed = await notices.status()
-    return ActionResult(texts.format_notice_status(pending, sent_count, failed))
-
-
 async def action_ban_song(uid: str, target: str) -> ActionResult:
     if not permissions.is_admin(uid):
         return ActionResult("无权限：仅管理员可禁播歌曲")
@@ -259,6 +263,7 @@ TOOL_HANDLERS = {
     "search_songs": _handler(action_search, "query", "source"),
     "order_song": _handler(action_order, "index", casts={"index": int}),
     "my_song_list": _handler(action_my_songs),
+    "my_selections": _handler(action_my_selections),
     "remaining_quota": _handler(action_remaining),
     "my_user_id": _handler(action_my_id),
     "my_profile": _handler(action_profile),

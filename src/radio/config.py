@@ -63,11 +63,6 @@ class Settings:
         self.admin_daily_limit: int = _env_int("QQ_SONG_ADMIN_DAILY_LIMIT", 99)
         self.record_limit: int = _env_int("QQ_SONG_RECORD_LIMIT", 20)
 
-        self.notify_interval: int = max(_env_int("QQ_SONG_NOTIFY_INTERVAL", 86400), 60)
-        self.notify_weekday: int = _env_int("QQ_SONG_NOTIFY_WEEKDAY", 4)
-        self.notify_hour: int = _env_int("QQ_SONG_NOTIFY_HOUR", 19)
-        self.notify_minute: int = _env_int("QQ_SONG_NOTIFY_MINUTE", 0)
-
         self.permissions_file: Path = Path(
             _env("QQ_PERMISSIONS_FILE") or str(PROJECT_ROOT / "data" / "permissions.json")
         )

@@ -5,6 +5,7 @@ nonebot.init()
 import os
 
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from radio.db.models import Base
@@ -24,6 +25,7 @@ _TEST_URL = os.environ.get("TEST_DATABASE_URL") or (
 async def db_engine():
     engine = create_async_engine(_TEST_URL)
     async with engine.begin() as conn:
+        await conn.execute(text("DROP TABLE IF EXISTS song_selected_notice CASCADE"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield engine

@@ -95,26 +95,4 @@ class PlayHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now)
 
 
-class SongSelectedNotice(Base):
-    """歌曲被选用后的待通知缓存。
 
-    web 后台选用歌曲时写入（含该歌所有点歌用户），bot 定时任务逐用户私聊通知。
-    ``failed_user_ids`` 记录本轮发送失败的用户（只重试失败者），``attempts`` 累计
-    尝试轮次，达到上限后放弃并标记已发送，避免每周重复打扰已收到通知的用户。
-    """
-
-    __tablename__ = "song_selected_notice"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    song_id: Mapped[int] = mapped_column(Integer, ForeignKey("songs.id"), nullable=False)
-    name: Mapped[str] = mapped_column(String, nullable=False, default="")
-    artist: Mapped[str] = mapped_column(String, nullable=False, default="")
-    selected_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_now)
-    user_ids: Mapped[str] = mapped_column(String, nullable=False, default="[]")
-    failed_user_ids: Mapped[str] = mapped_column(String, nullable=False, default="[]")
-    rejected_user_ids: Mapped[str] = mapped_column(
-        String, nullable=False, default="[]", server_default="[]"
-    )
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

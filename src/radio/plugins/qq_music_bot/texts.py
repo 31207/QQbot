@@ -47,6 +47,7 @@ FUNCTION_LIST = (
     "· 搜索 歌名：找歌（如 搜索 晴天 / 搜索 qq 晴天）\n"
     "· 点歌 序号：从结果里点选（如 点歌 3）\n"
     "· 我的歌单：查看你点过的歌\n"
+    "· 选用记录：看你点的歌哪些被广播站选用了\n"
     "· 剩余次数：查今天还能点几首\n"
     "· 备注 编号 内容：给已点歌曲加备注\n"
     "· ID：查看自己的用户ID\n"
@@ -101,21 +102,13 @@ def format_profile(now, uid: str, role: str, used: int, limit: int, period: str)
     )
 
 
-def format_notice_status(pending: list[dict], sent_count: int, failed: list[dict]) -> str:
-    lines = [f"通知发送情况：待发送 {len(pending)} 条 / 已发送 {sent_count} 条 / 失败 {len(failed)} 条"]
-    if pending:
-        lines.append("")
-        lines.append("【待发送】")
-        for item in pending[:10]:
-            date_cn = format_date_cn(item.get("selected_at"))
-            retry = f" · 已尝试 {item['attempts']} 轮" if item.get("attempts") else ""
-            lines.append(f"· 《{item['name']} - {item['artist']}》（{date_cn}选用）{retry}")
-    if failed:
-        lines.append("")
-        lines.append("【发送失败（已放弃重试）】")
-        for item in failed[:10]:
-            lines.append(
-                f"· 《{item['name']} - {item['artist']}》"
-                f"未送达用户：{'、'.join(item['failed_user_ids'])}"
-            )
+def format_selections(records: list[dict]) -> str:
+    if not records:
+        return "你点过的歌还没有被选用，广播站选用后会出现在这里。"
+    lines = [f"你的选用记录（共 {len(records)} 首，最近在前）："]
+    for i, r in enumerate(records, 1):
+        lines.append(
+            f"{i}. {r['name']} - {r['artist']} "
+            f"[编号{r['song_id']}]（{format_short_time(r.get('selected_at'))} 选用）"
+        )
     return "\n".join(lines)

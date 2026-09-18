@@ -19,7 +19,7 @@
     <tspan x="36" dy="24">│  ├─ config.py            统一配置（唯一解析点）</tspan>
     <tspan x="36" dy="24">│  ├─ state.py             会话状态（TTL 自动回收）</tspan>
     <tspan x="36" dy="24">│  ├─ db/                  异步引擎 / 模型 / 跨方言 UPSERT</tspan>
-    <tspan x="36" dy="24">│  ├─ services/            业务服务（点歌/搜索/权限/封面/通知/LLM）</tspan>
+    <tspan x="36" dy="24">│  ├─ services/            业务服务（点歌/搜索/权限/封面/选用记录/LLM）</tspan>
     <tspan x="36" dy="24">│  └─ plugins/qq_music_bot/ 单一入口插件（分发/指令/动作层）</tspan>
     <tspan x="36" dy="24">├─ web-admin/              FastAPI 管理台 + 静态前端</tspan>
     <tspan x="36" dy="24">└─ data/</tspan>

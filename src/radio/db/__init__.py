@@ -1,6 +1,6 @@
 """异步数据库层（SQLAlchemy 2.0 async + asyncpg，仅支持 PostgreSQL）。
 
-- 连接串来自 :mod:`qqbot.config` 的 DATABASE_URL（必填）。
+- 连接串来自 :mod:`radio.config` 的 DATABASE_URL（必填）。
 - engine / session 工厂惰性创建：首次使用时才解析配置，天然规避导入顺序问题。
 """
 
@@ -19,7 +19,7 @@ def _pg_url(url: str) -> str:
     if not url:
         raise RuntimeError(
             "未配置 DATABASE_URL。请在 .env 中设置，例如：\n"
-            "DATABASE_URL=postgresql+asyncpg://user:pass@127.0.0.1:5432/qqbot"
+            "DATABASE_URL=postgresql+asyncpg://user:pass@127.0.0.1:5432/radio"
         )
     if not url.startswith("postgresql"):
         raise RuntimeError(f"DATABASE_URL 必须是 PostgreSQL 连接串，当前为：{url}")
@@ -31,7 +31,7 @@ def _pg_url(url: str) -> str:
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        from qqbot.config import settings
+        from radio.config import settings
 
         _engine = create_async_engine(_pg_url(settings.database_url), echo=False, pool_pre_ping=True)
     return _engine

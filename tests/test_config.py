@@ -2,7 +2,7 @@ import os
 
 import nonebot
 
-from qqbot import config
+from radio import config
 
 
 def _stub_nonebot(monkeypatch):

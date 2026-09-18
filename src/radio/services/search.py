@@ -6,7 +6,7 @@ import math
 
 import httpx
 
-from qqbot.state import SearchSession, StateStore
+from radio.state import SearchSession, StateStore
 
 SEARCH_TIMEOUT = 15.0
 

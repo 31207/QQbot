@@ -1,4 +1,4 @@
-from qqbot.services.notices import MAX_ATTEMPTS, NoticeService
+from radio.services.notices import MAX_ATTEMPTS, NoticeService
 
 from .conftest import song_info
 

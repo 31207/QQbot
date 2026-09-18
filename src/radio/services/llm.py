@@ -15,10 +15,10 @@ import json
 import logging
 from typing import Any, Awaitable, Callable
 
-from qqbot.actions import ActionResult
-from qqbot.config import Settings
+from radio.actions import ActionResult
+from radio.config import Settings
 
-logger = logging.getLogger("qqbot.llm")
+logger = logging.getLogger("radio.llm")
 
 ToolHandler = Callable[[str, dict], Awaitable[ActionResult]]
 

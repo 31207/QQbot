@@ -13,10 +13,10 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qqbot.db import get_session_factory
-from qqbot.db.models import SongSelectedNotice, UserRequest
+from radio.db import get_session_factory
+from radio.db.models import SongSelectedNotice, UserRequest
 
-logger = logging.getLogger("qqbot.notices")
+logger = logging.getLogger("radio.notices")
 
 MAX_ATTEMPTS = 3
 

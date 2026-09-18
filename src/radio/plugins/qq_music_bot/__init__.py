@@ -26,11 +26,11 @@ from nonebot.adapters.qq import Bot as QQBot
 from nonebot.adapters.qq import C2CMessageCreateEvent, DirectMessageCreateEvent
 from nonebot.rule import Rule, to_me
 
-from qqbot.actions import ActionResult
-from qqbot.db import dispose_engine, init_db
-from qqbot.runtime import notices, permissions, requests, search, settings, state, users
-from qqbot.services.llm import LLMService
-from qqbot.util import compact, format_date_cn
+from radio.actions import ActionResult
+from radio.db import dispose_engine, init_db
+from radio.runtime import notices, permissions, requests, search, settings, state, users
+from radio.services.llm import LLMService
+from radio.util import compact, format_date_cn
 
 from . import actions, channels, texts
 from .channels import Channel

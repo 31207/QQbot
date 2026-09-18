@@ -10,7 +10,7 @@ import json
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("qqbot.permissions")
+logger = logging.getLogger("radio.permissions")
 
 
 class Permissions:

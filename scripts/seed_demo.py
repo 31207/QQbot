@@ -21,22 +21,22 @@ from sqlalchemy import delete, select
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# 先注入 .env / .env.prod 的配置（与 bot 进程一致），再导入 qqbot
-from qqbot.util import load_dotenv  # noqa: E402
+# 先注入 .env / .env.prod 的配置（与 bot 进程一致），再导入 radio
+from radio.util import load_dotenv  # noqa: E402
 
 for _key, _value in load_dotenv(_PROJECT_ROOT / ".env").items():
     os.environ.setdefault(_key, _value)
 for _key, _value in load_dotenv(_PROJECT_ROOT / ".env.prod").items():
     os.environ.setdefault(_key, _value)
 
-from qqbot.db import get_session_factory, init_db  # noqa: E402
-from qqbot.db.models import PlayHistory, Song, SongSelectedNotice, User, UserRequest  # noqa: E402
-from qqbot.services.notices import NoticeService  # noqa: E402
-from qqbot.services.permissions import Permissions  # noqa: E402
-from qqbot.services.requests import RequestService  # noqa: E402
-from qqbot.services.songs import SongService  # noqa: E402
-from qqbot.services.users import UserService  # noqa: E402
-from qqbot.util import today_key, week_key  # noqa: E402
+from radio.db import get_session_factory, init_db  # noqa: E402
+from radio.db.models import PlayHistory, Song, SongSelectedNotice, User, UserRequest  # noqa: E402
+from radio.services.notices import NoticeService  # noqa: E402
+from radio.services.permissions import Permissions  # noqa: E402
+from radio.services.requests import RequestService  # noqa: E402
+from radio.services.songs import SongService  # noqa: E402
+from radio.services.users import UserService  # noqa: E402
+from radio.util import today_key, week_key  # noqa: E402
 
 # (source, 歌名, 歌手) —— 覆盖纯音乐/重金属/电音喊麦/广告曲/流行/民谣/摇滚等类型
 SONG_POOL: list[tuple[str, str, str]] = [

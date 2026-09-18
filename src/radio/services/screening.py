@@ -14,11 +14,11 @@ import time
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qqbot.config import settings
-from qqbot.db import get_session_factory
-from qqbot.db.models import Song
+from radio.config import settings
+from radio.db import get_session_factory
+from radio.db.models import Song
 
-logger = logging.getLogger("qqbot.screening")
+logger = logging.getLogger("radio.screening")
 
 CACHE_TTL = 24 * 3600
 CACHE_MAX = 500

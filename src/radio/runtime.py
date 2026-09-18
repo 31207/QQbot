@@ -5,14 +5,14 @@
 
 from __future__ import annotations
 
-from qqbot.config import settings
-from qqbot.services.notices import NoticeService
-from qqbot.services.permissions import Permissions
-from qqbot.services.requests import RequestService
-from qqbot.services.search import MusicAPI, SearchService
-from qqbot.services.songs import SongService
-from qqbot.services.users import UserService
-from qqbot.state import StateStore
+from radio.config import settings
+from radio.services.notices import NoticeService
+from radio.services.permissions import Permissions
+from radio.services.requests import RequestService
+from radio.services.search import MusicAPI, SearchService
+from radio.services.songs import SongService
+from radio.services.users import UserService
+from radio.state import StateStore
 
 __all__ = [
     "notices",

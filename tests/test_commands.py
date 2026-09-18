@@ -1,4 +1,4 @@
-from qqbot.plugins.qq_music_bot.commands import CommandKind, parse_command
+from radio.plugins.qq_music_bot.commands import CommandKind, parse_command
 
 
 def test_search_basic():

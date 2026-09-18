@@ -5,9 +5,9 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qqbot.db import get_session_factory
-from qqbot.db.models import User
-from qqbot.db.statements import insert_ignore
+from radio.db import get_session_factory
+from radio.db.models import User
+from radio.db.statements import insert_ignore
 
 
 class UserService:

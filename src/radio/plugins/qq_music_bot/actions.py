@@ -1,6 +1,6 @@
 """动作层：所有功能点的唯一实现，确定性指令与 LLM 工具共用。
 
-每个动作返回 :class:`qqbot.actions.ActionResult`（文本 + 可选图片），
+每个动作返回 :class:`radio.actions.ActionResult`（文本 + 可选图片），
 由插件负责发送；LLM 工具循环复用同一批动作，业务逻辑零重复。
 """
 
@@ -11,10 +11,10 @@ from typing import Callable
 
 from nonebot import logger
 
-from qqbot.actions import ActionResult
-from qqbot.render import SOURCE_NAMES, render_page, render_records
-from qqbot.runtime import notices, permissions, requests, search, settings, songs, state, users
-from qqbot.services import MusicSearchError, fetch_cover
+from radio.actions import ActionResult
+from radio.render import SOURCE_NAMES, render_page, render_records
+from radio.runtime import notices, permissions, requests, search, settings, songs, state, users
+from radio.services import MusicSearchError, fetch_cover
 
 from . import texts
 

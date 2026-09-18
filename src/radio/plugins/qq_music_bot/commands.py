@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-from qqbot.util import compact
+from radio.util import compact
 
 _POINT_RE = re.compile(r"^点歌(?:\s*(\d+))?$")
 _REMARK_RE = re.compile(r"^备注(?:\s*(\d+)(?:\s+([\s\S]*))?)?$")

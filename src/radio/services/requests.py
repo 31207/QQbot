@@ -15,13 +15,13 @@ from datetime import datetime
 from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qqbot.db import get_session_factory
-from qqbot.db.models import Song, UserRequest
-from qqbot.db.statements import insert_update
-from qqbot.services.permissions import Permissions
-from qqbot.services.songs import SongService
-from qqbot.services.users import UserService
-from qqbot.util import today_key, week_key
+from radio.db import get_session_factory
+from radio.db.models import Song, UserRequest
+from radio.db.statements import insert_update
+from radio.services.permissions import Permissions
+from radio.services.songs import SongService
+from radio.services.users import UserService
+from radio.util import today_key, week_key
 
 
 @dataclass

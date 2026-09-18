@@ -7,11 +7,11 @@ import os
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from qqbot.db.models import Base
-from qqbot.services.permissions import Permissions
-from qqbot.services.requests import RequestService
-from qqbot.services.songs import SongService
-from qqbot.services.users import UserService
+from radio.db.models import Base
+from radio.services.permissions import Permissions
+from radio.services.requests import RequestService
+from radio.services.songs import SongService
+from radio.services.users import UserService
 
 # 测试库连接串：默认本地 qqbot_test（密码经 PGPASSWORD 环境变量提供）；
 # 也可用 TEST_DATABASE_URL 覆盖，例如 CI 里的 postgres 服务。

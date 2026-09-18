@@ -5,9 +5,9 @@ from __future__ import annotations
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qqbot.db import get_session_factory
-from qqbot.db.models import Song
-from qqbot.db.statements import insert_ignore
+from radio.db import get_session_factory
+from radio.db.models import Song
+from radio.db.statements import insert_ignore
 
 _SONG_COLUMNS = (
     "id", "source", "source_id", "name", "artist", "album", "cover",

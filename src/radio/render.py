@@ -11,9 +11,9 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from qqbot.util import format_short_time
+from radio.util import format_short_time
 
-logger = logging.getLogger("qqbot.render")
+logger = logging.getLogger("radio.render")
 
 WIDTH = 920
 PAD = 28

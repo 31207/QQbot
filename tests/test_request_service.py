@@ -46,7 +46,7 @@ async def test_quota_limit(services):
 async def test_admin_daily_limit(tmp_path, session_factory):
     import json
 
-    from qqbot.services.permissions import Permissions
+    from radio.services.permissions import Permissions
 
     path = tmp_path / "p.json"
     path.write_text(json.dumps({"admins": ["90000"], "super_admins": []}), encoding="utf-8")

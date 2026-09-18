@@ -5,7 +5,7 @@
   注入环境变量（见 web-admin/backend/app.py），本模块只认环境变量；
 - 读取优先级：系统环境变量 → NoneBot 配置 → 默认值。
 
-所有配置项只在 qqbot.config 里解析一次，其它模块直接 ``from qqbot.config import settings``。
+所有配置项只在 radio.config 里解析一次，其它模块直接 ``from radio.config import settings``。
 """
 
 from __future__ import annotations

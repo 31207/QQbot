@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from qqbot.util import format_date_cn, format_short_time
+from radio.util import format_date_cn, format_short_time
 
 HELP_MENU = (
     "点歌机器人功能菜单，回复编号：\n"

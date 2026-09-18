@@ -1,4 +1,4 @@
-from qqbot.util import load_dotenv
+from radio.util import load_dotenv
 
 
 def test_parsing(tmp_path):

@@ -2,7 +2,7 @@ import json
 import os
 import time
 
-from qqbot.services.permissions import Permissions
+from radio.services.permissions import Permissions
 
 
 def test_load_and_reload(tmp_path):

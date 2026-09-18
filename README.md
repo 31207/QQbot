@@ -24,7 +24,7 @@
 ## 架构
 
 - 分层：**插件层**（消息路由/状态流转）→ **动作层**（功能实现，指令与 LLM 工具共用一份）→ **服务层**（业务/持久化，纯业务无 adapter 依赖）→ **db 层**（异步 SQLAlchemy）。
-- 单插件单入口：`src/qqbot/plugins/qq_music_bot` 一个 matcher 统一分发，无插件间隐式依赖、无优先级数字耦合。
+- 单插件单入口：`src/radio/plugins/qq_music_bot` 一个 matcher 统一分发，无插件间隐式依赖、无优先级数字耦合。
 - 异步数据库：PostgreSQL（asyncpg），bot 与 web-admin 共用同一连接串 `DATABASE_URL`，点歌写入用单条 `INSERT … ON CONFLICT` 原子完成，无读改写竞态。
 - 无内存泄漏：所有进程内状态（搜索会话/LLM 记忆/一次性模式）带 TTL，由后台维护任务定期回收；点歌写入用单条 `INSERT … ON CONFLICT` 原子完成，无读改写竞态。
 

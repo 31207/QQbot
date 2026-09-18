@@ -1,7 +1,7 @@
 import asyncio
 import time
 
-from qqbot.state import StateStore
+from radio.state import StateStore
 
 
 def test_search_session_ttl():
@@ -45,6 +45,6 @@ def test_pending_share_ttl():
 
 
 def _session():
-    from qqbot.state import SearchSession
+    from radio.state import SearchSession
 
     return SearchSession(query="晴天", source=None, songs=[{"name": "晴天"}], page=1, total_pages=1)

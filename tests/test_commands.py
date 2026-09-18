@@ -55,6 +55,11 @@ def test_list_and_remaining():
         assert parse_command(text).kind == CommandKind.REMAINING
 
 
+def test_my_id():
+    for text in ("id", "ID", "我的ID", "我的id", "用户ID", "查询id"):
+        assert parse_command(text).kind == CommandKind.MY_ID
+
+
 def test_help():
     assert parse_command("帮助").kind == CommandKind.HELP
     assert parse_command("菜单").kind == CommandKind.HELP

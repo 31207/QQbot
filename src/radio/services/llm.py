@@ -99,6 +99,14 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "my_user_id",
+            "description": "查看用户自己的用户ID。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "add_remark",
             "description": "为我的某首点歌设置或清除备注。",
             "parameters": {

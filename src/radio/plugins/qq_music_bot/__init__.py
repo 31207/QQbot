@@ -256,6 +256,10 @@ async def run_command(channel: Channel, uid: str, user_state, cmd: Command, raw_
         await send_result(channel, await actions.action_remaining(uid), phrase=raw_text)
         return
 
+    if kind == CommandKind.MY_ID:
+        await send_result(channel, await actions.action_my_id(uid))
+        return
+
     if kind == CommandKind.REMARK:
         song_id, content = cmd.args
         if song_id is None:

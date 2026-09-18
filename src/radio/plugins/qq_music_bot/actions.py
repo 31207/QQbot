@@ -140,6 +140,10 @@ async def action_remaining(uid: str) -> ActionResult:
     return ActionResult(texts.format_remaining(used, limit, period))
 
 
+async def action_my_id(uid: str) -> ActionResult:
+    return ActionResult(f"你的用户ID：{uid}")
+
+
 async def action_remark(uid: str, song_id: int | None, content: str = "") -> ActionResult:
     if not song_id:
         return ActionResult(
@@ -243,6 +247,7 @@ TOOL_HANDLERS = {
     "order_song": _handler(action_order, "index", casts={"index": int}),
     "my_song_list": _handler(action_my_songs),
     "remaining_quota": _handler(action_remaining),
+    "my_user_id": _handler(action_my_id),
     "add_remark": _handler(action_remark, "song_id", "content", casts={"song_id": int}),
     "help_menu": _handler(action_help_menu),
     "ban_user": _handler(action_ban_user, "user_id", casts={"user_id": str}),

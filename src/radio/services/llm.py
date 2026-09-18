@@ -135,7 +135,7 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "被封禁的用户 QQ"}
+                    "user_id": {"type": "string", "description": "被封禁的用户ID（带平台前缀，如 onebot:123）"}
                 },
                 "required": ["user_id"],
             },
@@ -149,7 +149,7 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "string", "description": "被解封的用户 QQ"}
+                    "user_id": {"type": "string", "description": "被解封的用户ID（带平台前缀，如 onebot:123）"}
                 },
                 "required": ["user_id"],
             },

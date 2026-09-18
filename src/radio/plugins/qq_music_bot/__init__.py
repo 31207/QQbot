@@ -364,15 +364,18 @@ def _seconds_until_next_send() -> float:
 
 
 async def _send_private_to_all_bots(bots: dict, uid: str, text: str) -> bool:
-    """按 adapter 类型向用户发私聊消息，任一 bot 成功即止。"""
+    """按用户 ID 的平台前缀路由发送；同类 adapter 多 bot 时依次尝试，任一成功即止。"""
     from nonebot.adapters.qq import MessageSegment as QQMessageSegment
 
+    platform, parts = channels.split_uid(uid)
     for bot in bots.values():
         try:
-            if bot.type == "OneBot V11":
-                await bot.call_api("send_private_msg", user_id=uid, message=text)
-            elif bot.type == "QQ":
-                await bot.send_to_c2c(openid=uid, message=QQMessageSegment.text(text))
+            if platform == channels.ONEBOT_PREFIX and bot.type == "OneBot V11":
+                await bot.call_api("send_private_msg", user_id=parts[0], message=text)
+            elif platform == channels.C2C_PREFIX and bot.type == "QQ":
+                await bot.send_to_c2c(openid=parts[0], message=QQMessageSegment.text(text))
+            elif platform == channels.DMS_PREFIX and bot.type == "QQ":
+                await bot.send_to_dms(guild_id=parts[0], message=QQMessageSegment.text(text))
             else:
                 continue
             return True

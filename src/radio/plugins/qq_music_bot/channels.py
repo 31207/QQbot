@@ -5,7 +5,12 @@
   - C2C 单聊：``C2CMessageCreateEvent``，``file_image`` 发图（自动走文件上传 API）
   - 频道私信：``DirectMessageCreateEvent``，``file_image`` 发图（自动走 DMS 文件上传）
 
-业务分发层只依赖 :class:`Channel`，不感知具体 adapter；
+业务用户 ID 带平台前缀，业务层无需感知 adapter，发送时按前缀路由：
+
+- ``onebot:<QQ号>``
+- ``c2c:<user_openid>``
+- ``dms:<guild_id>:<频道用户id>``
+
 新增 adapter 只需在这里加一个工厂函数。
 """
 
@@ -13,6 +18,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Awaitable, Callable
+
+ONEBOT_PREFIX = "onebot"
+C2C_PREFIX = "c2c"
+DMS_PREFIX = "dms"
+
+
+def encode_uid(platform: str, *parts: str) -> str:
+    """编码业务用户 ID：``onebot:123`` / ``c2c:xxx`` / ``dms:guild:user``。"""
+    return ":".join([platform, *[str(part) for part in parts]])
+
+
+def split_uid(uid: str) -> tuple[str, list[str]]:
+    """解析业务用户 ID 为 ``(平台, 标识段)``；无前缀时平台为 ``""``。"""
+    parts = str(uid or "").split(":")
+    if len(parts) < 2 or not parts[1]:
+        return "", [str(uid or "")]
+    return parts[0], parts[1:]
 
 
 @dataclass
@@ -34,7 +56,7 @@ def from_onebot(bot, event) -> Channel:
 
     return Channel(
         adapter="onebot",
-        user_id=str(event.get_user_id()),
+        user_id=encode_uid(ONEBOT_PREFIX, event.get_user_id()),
         send_text=send_text,
         send_image=send_image,
     )
@@ -51,7 +73,7 @@ def from_qq_c2c(bot, event) -> Channel:
 
     return Channel(
         adapter="qq",
-        user_id=str(event.get_user_id()),
+        user_id=encode_uid(C2C_PREFIX, event.get_user_id()),
         send_text=send_text,
         send_image=send_image,
     )
@@ -69,7 +91,7 @@ def from_qq_dms(bot, event) -> Channel:
 
     return Channel(
         adapter="qq",
-        user_id=str(event.get_user_id()),
+        user_id=encode_uid(DMS_PREFIX, event.guild_id, event.get_user_id()),
         send_text=send_text,
         send_image=send_image,
     )

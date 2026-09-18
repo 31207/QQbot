@@ -33,8 +33,13 @@ def test_remark():
 def test_admin_commands():
     assert parse_command("封禁 12345").args == ("12345",)
     assert parse_command("解封 12345").args == ("12345",)
+    assert parse_command("封禁 onebot:12345").args == ("onebot:12345",)
+    assert parse_command("解封 c2c:abcDEF").args == ("c2c:abcDEF",)
+    assert parse_command("封禁 dms:987654:321").args == ("dms:987654:321",)
     assert parse_command("封禁列表").kind == CommandKind.BAN_LIST
     assert parse_command("解封列表").kind == CommandKind.BAN_LIST
+    assert parse_command("封禁某人") is None
+    assert parse_command("封 禁列表").kind == CommandKind.BAN_LIST
     assert parse_command("禁歌 晴天").args == ("晴天",)
     assert parse_command("解禁歌 晴天").args == ("晴天",)
     assert parse_command("重置点歌次数").kind == CommandKind.RESET_QUOTA
